@@ -32,8 +32,13 @@ router.get('/:folder/:filename', async (req, res) => {
       const remotePath = `${folder}/${filename}`;
       console.log(`Fetching from SFTP: ${remotePath}`);
       
-      // Download from SFTP to Vercel's volatile /tmp
-      await sftp.fastGet(remotePath, localPath);
+      try {
+        await sftp.fastGet(remotePath, localPath);
+      } catch (e) {
+        console.warn(`Relative path failed, trying absolute: /${remotePath}`);
+        await sftp.fastGet(`/${remotePath}`, localPath);
+      }
+      
       await sftp.end();
 
       console.log(`Successfully fetched ${filename}, sending to browser.`);
