@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  name      String?
+  role      String     @default("OPERATOR") // ADMIN, OPERATOR
+  status    String     @default("ACTIVE")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  blobs     Blob[]
+  documents Document[]
+
+  @@map("users")
+}
+
+model Blob {
+  id        String     @id @default(cuid())
+  userId    String     // Link to the user who uploaded
+  filename  String
+  s3Path    String
+  pageCount Int        @default(0)
+  status    String     @default("PENDING")
+  progress  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id])
+  auditLogs AuditLog[]
+  documents Document[]
+  pages     Page[]
+
+  @@map("blobs")
+}
+
+model Page {
+  id              String         @id @default(cuid())
+  blobId          String
+  pageIndex       Int
+  s3Path          String
+  aiLabel         String?
+  confidenceScore Float?
+  isFlagged       Boolean        @default(false)
+  rotation        Int            @default(0)
+  anomalyFlags    String?        
+  extractedData   String?        
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  documentPages   DocumentPage[]
+  blob            Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
+
+  @@unique([blobId, pageIndex])
+  @@map("pages")
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  userId       String
+  blobId       String
+  name         String
+  documentType String
+  status       String         @default("AI_CLASSIFIED")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id])
+  auditLogs    AuditLog[]
+  pages        DocumentPage[]
+  blob         Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model DocumentPage {
+  id         String   @id @default(cuid())
+  documentId String
+  pageId     String
+  order      Int
+  page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, pageId])
+  @@map("document_pages")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  blobId      String
+  documentId  String?
+  action      String
+  payload     String?
+  performedBy String    @default("human")
+  createdAt   DateTime  @default(now())
+  document    Document? @relation(fields: [documentId], references: [id])
+  blob        Blob      @relation(fields: [blobId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+model ConfiguredDocType {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  label       String
+  description String?
+  isCommon    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("configured_doc_types")
+}
+
+model StorageSettings {
+  id          String   @id @default("default")
+  provider    String   @default("SFTP") // SFTP or S3
+
+  sftpHost    String?
+  sftpPort    Int      @default(22)
+  sftpUser    String?
+  sftpPass    String?
+
+  s3Bucket    String?
+  s3Region    String?
+  s3AccessKey String?
+  s3SecretKey String?
+
+  updatedAt   DateTime @updatedAt
+
+  @@map("storage_settings")
+}
