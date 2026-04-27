@@ -113,7 +113,7 @@ async function listRemoteFiles(folder = 'Inbound', allowedExtensions = ['.pdf'])
       password: settings.sftpPass
     });
 
-    const folderPath = `/${folder}`;
+    const folderPath = folder;
     const exists = await sftp.exists(folderPath);
     if (!exists) {
       await sftp.end();
