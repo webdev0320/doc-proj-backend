@@ -16,9 +16,12 @@ router.get('/:folder/:filename', async (req, res) => {
   const settings = await getStorageConfig();
   const localPath = path.join('/tmp', filename);
 
+  console.log(`Proxy request: ${folder}/${filename}`);
+
   try {
     if (settings.provider === 'SFTP') {
       const sftp = new Client();
+      console.log(`Connecting to SFTP for proxy...`);
       await sftp.connect({
         host: settings.sftpHost,
         port: settings.sftpPort,
@@ -26,10 +29,14 @@ router.get('/:folder/:filename', async (req, res) => {
         password: settings.sftpPass
       });
 
+      const remotePath = `${folder}/${filename}`;
+      console.log(`Fetching from SFTP: ${remotePath}`);
+      
       // Download from SFTP to Vercel's volatile /tmp
-      await sftp.fastGet(`${folder}/${filename}`, localPath);
+      await sftp.fastGet(remotePath, localPath);
       await sftp.end();
 
+      console.log(`Successfully fetched ${filename}, sending to browser.`);
       res.sendFile(localPath, () => {
         // Cleanup /tmp after sending
         try { if (fs.existsSync(localPath)) fs.unlinkSync(localPath); } catch (e) {}
@@ -38,8 +45,8 @@ router.get('/:folder/:filename', async (req, res) => {
       res.status(400).send('Storage provider not supported for proxying');
     }
   } catch (err) {
-    console.error('SFTP Proxy Error:', err);
-    res.status(404).send('File not found');
+    console.error('SFTP Proxy Error:', err.message);
+    res.status(404).send(`File not found: ${err.message}`);
   }
 });
 
