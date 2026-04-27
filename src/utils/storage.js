@@ -149,6 +149,7 @@ async function downloadFromRemote(filename, localPath, folder = 'Inbound') {
     const buffer = await streamToBuffer(data.Body);
     await fs.writeFile(localPath, buffer);
   } else {
+    const sftp = new Client();
     console.log(`Connecting to SFTP to download ${filename}...`);
     await sftp.connect({
       host: settings.sftpHost,
