@@ -8,7 +8,9 @@ const { prisma } = require('../lib/prisma');
 const { logger } = require('../utils/logger');
 const { encryptFile } = require('../utils/crypto');
 
-const storageDir = path.join(__dirname, '../../../storage/blobs');
+const storageDir = process.env.VERCEL 
+  ? '/tmp' 
+  : path.join(__dirname, '../../../storage/blobs');
 
 const { listInboundFiles, downloadFromInbound, moveToArchive } = require('../utils/storage');
 
@@ -31,7 +33,7 @@ async function pollSftp() {
       logger.info(`Found new remote file: ${file.name}`);
 
       const fileName = `${uuidv4()}-${file.name}`;
-      const actualStorageDir = path.join(__dirname, '../../../storage/blobs');
+      const actualStorageDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../../../storage/blobs');
       const filePath = path.join(actualStorageDir, fileName);
       const tempPath = `${filePath}.tmp`;
 
