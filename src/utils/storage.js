@@ -5,16 +5,20 @@ const { Readable } = require('stream');
 
 async function getStorageConfig() {
   let settings = await prisma.storageSettings.findUnique({ where: { id: 'default' } });
-  if (!settings) {
-    settings = {
-      provider: 'SFTP',
-      sftpHost: process.env.SFTP_HOST,
-      sftpPort: parseInt(process.env.SFTP_PORT || '22'),
-      sftpUser: process.env.SFTP_USERNAME,
-      sftpPass: process.env.SFTP_PASSWORD
-    };
-  }
-  return settings;
+  
+  const config = {
+    provider: (settings && settings.provider) || 'SFTP',
+    sftpHost: (settings && settings.sftpHost) || process.env.SFTP_HOST,
+    sftpPort: parseInt((settings && settings.sftpPort) || process.env.SFTP_PORT || '22'),
+    sftpUser: (settings && settings.sftpUser) || process.env.SFTP_USERNAME,
+    sftpPass: (settings && settings.sftpPass) || process.env.SFTP_PASSWORD,
+    s3Bucket: (settings && settings.s3Bucket) || process.env.S3_BUCKET,
+    s3Region: (settings && settings.s3Region) || process.env.S3_REGION || 'us-east-1',
+    s3AccessKey: (settings && settings.s3AccessKey) || process.env.S3_ACCESS_KEY,
+    s3SecretKey: (settings && settings.s3SecretKey) || process.env.S3_SECRET_KEY,
+  };
+
+  return config;
 }
 
 function getS3Client(settings) {

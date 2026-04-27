@@ -57,10 +57,13 @@ async function pollSftp() {
 
         // Trigger engine
         try {
+          const { getStorageConfig } = require('../utils/storage');
+          const storageSettings = await getStorageConfig();
           const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
           await axios.post(engineUrl, {
             blob_id: blob.id,
             storage_path: fileName,
+            storage_settings: storageSettings
           });
         } catch (err) {
           logger.error(`Failed to trigger engine for remote blob ${blob.id}: ${err.message}`);
@@ -93,4 +96,4 @@ function initSftpPoller() {
   logger.info('SFTP Poller initialized.');
 }
 
-module.exports = { initSftpPoller };
+module.exports = { initSftpPoller, pollSftp };
