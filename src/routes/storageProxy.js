@@ -27,7 +27,7 @@ router.get('/:folder/:filename', async (req, res) => {
       });
 
       // Download from SFTP to Vercel's volatile /tmp
-      await sftp.fastGet(`/${folder}/${filename}`, localPath);
+      await sftp.fastGet(`${folder}/${filename}`, localPath);
       await sftp.end();
 
       res.sendFile(localPath, () => {
