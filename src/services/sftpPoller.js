@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const os = require('os');
 const Client = require('ssh2-sftp-client');
 const fs = require('fs/promises');
 const path = require('path');
@@ -8,9 +9,9 @@ const { prisma } = require('../lib/prisma');
 const { logger } = require('../utils/logger');
 const { encryptFile } = require('../utils/crypto');
 
-const storageDir = process.env.VERCEL 
-  ? '/tmp' 
-  : path.join(__dirname, '../../../storage/blobs');
+const storageDir = os.platform() === 'win32' 
+  ? path.join(__dirname, '../../../storage/blobs')
+  : '/tmp';
 
 const { listInboundFiles, downloadFromInbound, moveToArchive } = require('../utils/storage');
 
@@ -33,7 +34,9 @@ async function pollSftp() {
       logger.info(`Found new remote file: ${file.name}`);
 
       const fileName = `${uuidv4()}-${file.name}`;
-      const actualStorageDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../../../storage/blobs');
+      const actualStorageDir = os.platform() === 'win32' 
+        ? path.join(__dirname, '../../../storage/blobs')
+        : '/tmp';
       const filePath = path.join(actualStorageDir, fileName);
       const tempPath = `${filePath}.tmp`;
 
