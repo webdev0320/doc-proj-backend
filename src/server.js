@@ -58,6 +58,7 @@ app.use('/api/storage', storageProxyRouter);
 
 // Manual trigger for Vercel Cron
 app.get('/api/poll', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const { pollSftp } = require('./services/sftpPoller');
   await pollSftp();
   res.json({ success: true, message: 'Poller triggered' });

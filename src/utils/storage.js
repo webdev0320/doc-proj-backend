@@ -64,10 +64,14 @@ async function uploadToRemote(filename, buffer, folder = 'Inbound') {
       password: settings.sftpPass
     });
     
-    const folderPath = `/${folder}`;
+    const folderPath = folder; // Removed leading slash
     const exists = await sftp.exists(folderPath);
-    if (!exists) await sftp.mkdir(folderPath, true);
+    if (!exists) {
+      console.log(`Folder ${folderPath} missing, creating...`);
+      await sftp.mkdir(folderPath, true);
+    }
 
+    console.log(`Uploading ${filename} to ${folderPath}...`);
     await sftp.put(buffer, `${folderPath}/${filename}`);
     await sftp.end();
   }
@@ -145,14 +149,15 @@ async function downloadFromRemote(filename, localPath, folder = 'Inbound') {
     const buffer = await streamToBuffer(data.Body);
     await fs.writeFile(localPath, buffer);
   } else {
-    const sftp = new Client();
+    console.log(`Connecting to SFTP to download ${filename}...`);
     await sftp.connect({
       host: settings.sftpHost,
       port: settings.sftpPort,
       username: settings.sftpUser,
       password: settings.sftpPass
     });
-    await sftp.fastGet(`/${folder}/${filename}`, localPath);
+    console.log(`Downloading Inbound/${filename} to ${localPath}...`);
+    await sftp.fastGet(`${folder}/${filename}`, localPath); // Removed leading slash
     await sftp.end();
   }
 }
@@ -190,10 +195,11 @@ async function moveToArchive(filename) {
       password: settings.sftpPass
     });
     
-    const archiveExists = await sftp.exists('/Archive');
-    if (!archiveExists) await sftp.mkdir('/Archive', true);
+    console.log(`Moving ${filename} to Archive...`);
+    const archiveExists = await sftp.exists('Archive');
+    if (!archiveExists) await sftp.mkdir('Archive', true);
 
-    await sftp.rename(`/Inbound/${filename}`, `/Archive/${filename}`);
+    await sftp.rename(`Inbound/${filename}`, `Archive/${filename}`);
     await sftp.end();
   }
 }
