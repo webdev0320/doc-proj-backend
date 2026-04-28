@@ -29,7 +29,12 @@ router.post('/register', async (req, res) => {
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
     
-    res.cookie('token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      maxAge: 24 * 60 * 60 * 1000,
+      sameSite: 'none',
+      secure: true
+    });
     res.json({ success: true, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -49,7 +54,12 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '24h' });
     
-    res.cookie('token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      maxAge: 24 * 60 * 60 * 1000,
+      sameSite: 'none',
+      secure: true
+    });
     res.json({ success: true, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -76,7 +86,10 @@ router.get('/me', async (req, res) => {
 
 // POST /api/auth/logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', {
+    sameSite: 'none',
+    secure: true
+  });
   res.json({ success: true });
 });
 
