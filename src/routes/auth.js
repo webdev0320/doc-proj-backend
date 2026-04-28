@@ -8,6 +8,10 @@ const router = express.Router();
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { email, password, name, role } = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
 
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
