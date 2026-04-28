@@ -26,7 +26,10 @@ const authMiddleware = async (req, res, next) => {
 
 const adminMiddleware = (req, res, next) => {
   if (req.user?.role !== 'ADMIN') {
-    return res.status(403).json({ success: false, message: 'Access denied: Admin only' });
+    return res.status(403).json({ 
+      success: false, 
+      message: `Access denied: Admin only. Your current role is: ${req.user?.role || 'None'}` 
+    });
   }
   next();
 };
