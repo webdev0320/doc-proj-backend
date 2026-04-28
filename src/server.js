@@ -1,6 +1,9 @@
 require('dotenv').config();
 require('express-async-errors');
 
+// Safety fallback for demo
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'demo-safety-secret-123';
+
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
