@@ -35,7 +35,7 @@ router.post('/register', async (req, res) => {
       sameSite: 'none',
       secure: true
     });
-    res.json({ success: true, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
+    res.json({ success: true, token, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -60,7 +60,7 @@ router.post('/login', async (req, res) => {
       sameSite: 'none',
       secure: true
     });
-    res.json({ success: true, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
+    res.json({ success: true, token, data: { id: user.id, email: user.email, role: user.role, name: user.name } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
