@@ -31,6 +31,53 @@ router.get('/users', adminMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/admin/users - Create new user (Admin only, does NOT set session)
+router.post('/users', adminMiddleware, async (req, res) => {
+  const { email, password, name, role } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+
+  try {
+    const bcrypt = require('bcryptjs');
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) return res.status(400).json({ success: false, message: 'User already exists' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        role: role || 'OPERATOR',
+      },
+    });
+
+    const { password: _, ...safeUser } = user;
+    res.json({ success: true, data: safeUser });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/users/:id/reset-password - Reset user password
+router.post('/users/:id/reset-password', adminMiddleware, async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ success: false, message: 'Password is required' });
+
+  try {
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: req.params.id },
+      data: { password: hashedPassword }
+    });
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // PATCH /api/admin/users/:id - Update user role or status
 router.patch('/users/:id', adminMiddleware, async (req, res) => {
   const { role, status, name } = req.body;

@@ -74,7 +74,7 @@ router.get('/me', async (req, res) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-    if (!user) return res.json({ user: null });
+    if (!user || user.status === 'DISABLED') return res.json({ user: null });
     
     // Return only safe fields
     const { password, ...safeUser } = user;

@@ -13,8 +13,8 @@ const authMiddleware = async (req, res, next) => {
     // Verify user actually exists in DB
     const { prisma } = require('../lib/prisma');
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'User no longer exists. Please log in again.' });
+    if (!user || user.status === 'DISABLED') {
+      return res.status(401).json({ success: false, message: 'Your account is disabled or no longer exists.' });
     }
     
     req.user = user;
