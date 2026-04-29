@@ -30,6 +30,24 @@ router.get('/', async (req, res) => {
   res.json({ success: true, data: blobs });
 });
 
+// GET /api/blobs/:id/download — download the original blob file
+router.get('/:id/download', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const blob = await prisma.blob.findUniqueOrThrow({ where: { id } });
+    
+    // Check local storage first
+    const localPath = path.join(__dirname, '../../../storage/blobs', blob.s3Path);
+    if (fs.existsSync(localPath)) {
+      return res.download(localPath, blob.filename);
+    }
+    
+    res.status(404).json({ error: 'File not found locally for download' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/blobs/:id — single blob with pages
 router.get('/:id', async (req, res) => {
   const blob = await prisma.blob.findUniqueOrThrow({
