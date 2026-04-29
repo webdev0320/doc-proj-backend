@@ -1,10 +1,24 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
 const { prisma } = require('../lib/prisma');
 const { logger } = require('../utils/logger');
+const { uploadToRemote, getStorageConfig } = require('../utils/storage');
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Only PDF and Image files are allowed'));
+  },
+});
 
 // GET /api/blobs — list all blobs
 router.get('/', async (req, res) => {
@@ -55,13 +69,41 @@ router.patch('/:id', async (req, res) => {
  */
 router.post('/:id/pages', async (req, res) => {
   const { id } = req.params;
-  const { pages, status } = req.body;
+  const { pages, status, mode } = req.body;
 
   if (!pages || pages.length === 0) {
     return res.status(400).json({ success: false, error: 'No pages provided' });
   }
 
-  logger.info(`Engine callback for blob ${id}: ${pages.length} pages, status=${status}`);
+  logger.info(`Engine callback for blob ${id}: ${pages.length} pages, status=${status}, mode=${mode || 'default'}`);
+
+  // ── APPEND MODE: just insert new pages, keep existing ones ─────────────
+  if (mode === 'append') {
+    try {
+      await prisma.page.createMany({
+        data: pages.map(p => ({
+          blobId: id,
+          pageIndex: p.page_index,
+          s3Path: p.s3_path,
+          aiLabel: p.ai_label,
+          confidenceScore: p.confidence_score,
+          isFlagged: p.is_flagged || false,
+          anomalyFlags: p.anomaly_flags,
+          extractedData: p.extracted_data,
+        })),
+        skipDuplicates: true,
+      });
+      const totalPages = await prisma.page.count({ where: { blobId: id } });
+      await prisma.blob.update({
+        where: { id },
+        data: { status: 'COMPLETED', pageCount: totalPages, progress: 100 },
+      });
+      return res.json({ success: true, pagesAdded: pages.length, totalPages });
+    } catch (err) {
+      logger.error(`Append callback failed: ${err.message}`);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
 
   // Sort pages in-memory once (cheap JS sort, not a DB query)
   pages.sort((a, b) => a.page_index - b.page_index);
@@ -189,6 +231,47 @@ router.post('/:id/pages', async (req, res) => {
     res.json({ success: true, pagesCreated: pages.length });
   } catch (err) {
     logger.error(`Failed to process engine callback: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/blobs/:id/add-pages
+ * Called by the frontend to upload extra pages to an existing blob.
+ * Uploads the file to remote storage, then triggers the engine's /process-append.
+ */
+router.post('/:id/add-pages', upload.single('file'), async (req, res) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ success: false, error: 'No file provided' });
+
+  try {
+    // Verify blob ownership
+    const blob = await prisma.blob.findUniqueOrThrow({ where: { id } });
+
+    // Get current page count to use as offset
+    const pageOffset = await prisma.page.count({ where: { blobId: id } });
+
+    // Upload new file to remote Inbound storage
+    const remoteFileName = `${uuidv4()}-${req.file.originalname}`;
+    await uploadToRemote(remoteFileName, req.file.buffer, 'Inbound');
+    logger.info(`Add-pages: uploaded ${remoteFileName} for blob ${id} (offset=${pageOffset})`);
+
+    // Mark blob as processing
+    await prisma.blob.update({ where: { id }, data: { status: 'PROCESSING' } });
+
+    // Trigger engine append endpoint
+    const storageSettings = await getStorageConfig();
+    const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process-append`;
+    await axios.post(engineUrl, {
+      blob_id: id,
+      storage_path: remoteFileName,
+      page_offset: pageOffset,
+      storage_settings: storageSettings,
+    });
+
+    res.status(202).json({ success: true, message: 'Append processing started', pageOffset });
+  } catch (err) {
+    logger.error(`Add-pages failed for blob ${id}: ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
   }
 });
