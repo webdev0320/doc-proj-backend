@@ -15,15 +15,18 @@ const storageDir = os.platform() === 'win32'
 
 const { listInboundFiles, downloadFromInbound, moveToArchive } = require('../utils/storage');
 
+let isPolling = false;
+
 async function pollSftp() {
+  if (isPolling) {
+    logger.info('SFTP Poll already in progress, skipping...');
+    return;
+  }
+  isPolling = true;
   try {
     const pdfFiles = await listInboundFiles();
+    if (pdfFiles.length === 0) return;
 
-    if (pdfFiles.length === 0) {
-      return;
-    }
-
-    // Get all users to assign blobs to
     const users = await prisma.user.findMany({ where: { status: 'ACTIVE' } });
     if (users.length === 0) {
       logger.warn('No active users found to assign inbound files to.');
@@ -32,7 +35,6 @@ async function pollSftp() {
 
     for (const file of pdfFiles) {
       logger.info(`Found new remote file: ${file.name}`);
-
       const fileName = `${uuidv4()}-${file.name}`;
       const actualStorageDir = os.platform() === 'win32' 
         ? path.join(__dirname, '../../../storage/blobs')
@@ -40,55 +42,45 @@ async function pollSftp() {
       const filePath = path.join(actualStorageDir, fileName);
       const tempPath = `${filePath}.tmp`;
 
-      // Download file to temp path
-      await downloadFromInbound(file.name, tempPath);
-      
-      // Encrypt file
-      await encryptFile(tempPath, filePath);
-      await fs.unlink(tempPath);
-
-      // Create a blob for EACH user
-      for (const user of users) {
-        const blob = await prisma.blob.create({
-          data: {
-            userId: user.id,
-            filename: file.name,
-            s3Path: fileName,
-            status: 'PROCESSING',
-          },
-        });
-        
-        logger.info(`Blob ${blob.id} created for user ${user.id} from remote storage.`);
-
-        // Trigger engine
-        try {
-          const { getStorageConfig } = require('../utils/storage');
-          const storageSettings = await getStorageConfig();
-          const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
-          await axios.post(engineUrl, {
-            blob_id: blob.id,
-            storage_path: fileName,
-            storage_settings: storageSettings
-          });
-        } catch (err) {
-          logger.error(`Failed to trigger engine for remote blob ${blob.id}: ${err.message}`);
-          await prisma.blob.update({
-            where: { id: blob.id },
-            data: { status: 'FAILED' },
-          });
-        }
-      }
-
-      // Move to archive to prevent reprocessing
       try {
-          await moveToArchive(file.name);
-          logger.info(`Moved ${file.name} to Archive.`);
+        await downloadFromInbound(file.name, tempPath);
+        await encryptFile(tempPath, filePath);
+        await fs.unlink(tempPath);
+
+        for (const user of users) {
+          const blob = await prisma.blob.create({
+            data: {
+              userId: user.id,
+              filename: file.name,
+              s3Path: fileName,
+              status: 'PROCESSING',
+            },
+          });
+          
+          try {
+            const { getStorageConfig } = require('../utils/storage');
+            const storageSettings = await getStorageConfig();
+            const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
+            await axios.post(engineUrl, {
+              blob_id: blob.id,
+              storage_path: fileName,
+              storage_settings: storageSettings
+            }, { timeout: 30000 }); // 30s timeout
+          } catch (err) {
+            logger.error(`Failed to trigger engine for remote blob ${blob.id}: ${err.message}`);
+            await prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } });
+          }
+        }
+        await moveToArchive(file.name);
+        logger.info(`Moved ${file.name} to Archive.`);
       } catch (err) {
-          logger.warn(`Failed to move file to Archive: ${err.message}.`);
+        logger.error(`Error processing file ${file.name}: ${err.message}`);
       }
     }
   } catch (err) {
     logger.error(`Storage Poller Error: ${err.message}`);
+  } finally {
+    isPolling = false;
   }
 }
 
