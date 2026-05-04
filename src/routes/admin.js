@@ -1,6 +1,7 @@
 const express = require('express');
 const { prisma } = require('../lib/prisma');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { updateEnv } = require('../utils/env');
 
 const router = express.Router();
 
@@ -118,10 +119,24 @@ router.get('/doc-types', async (req, res) => {
 
 // POST /api/admin/doc-types - Add new template
 router.post('/doc-types', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon } = req.body;
+  const { code, label, description, isCommon, checklists } = req.body;
   try {
     const type = await prisma.configuredDocType.create({
-      data: { code, label, description, isCommon }
+      data: { code, label, description, isCommon, checklists: checklists || [] }
+    });
+    res.json({ success: true, data: type });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/admin/doc-types/:id - Update template
+router.patch('/doc-types/:id', adminMiddleware, async (req, res) => {
+  const { code, label, description, isCommon, checklists } = req.body;
+  try {
+    const type = await prisma.configuredDocType.update({
+      where: { id: req.params.id },
+      data: { code, label, description, isCommon, checklists }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -167,6 +182,25 @@ router.put('/storage-settings', adminMiddleware, async (req, res) => {
       create: { id: 'default', ...data },
       update: { ...data }
     });
+
+    // Update .env file
+    const envUpdates = {};
+    if (data.provider === 'SFTP') {
+      if (data.sftpHost) envUpdates.SFTP_HOST = data.sftpHost;
+      if (data.sftpPort) envUpdates.SFTP_PORT = data.sftpPort;
+      if (data.sftpUser) envUpdates.SFTP_USERNAME = data.sftpUser;
+      if (data.sftpPass) envUpdates.SFTP_PASSWORD = data.sftpPass;
+    } else if (data.provider === 'S3') {
+      if (data.s3Bucket) envUpdates.S3_BUCKET = data.s3Bucket;
+      if (data.s3Region) envUpdates.S3_REGION = data.s3Region;
+      if (data.s3AccessKey) envUpdates.S3_ACCESS_KEY = data.s3AccessKey;
+      if (data.s3SecretKey) envUpdates.S3_SECRET_KEY = data.s3SecretKey;
+    }
+    
+    if (Object.keys(envUpdates).length > 0) {
+      updateEnv(envUpdates);
+    }
+
     res.json({ success: true, data: settings });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

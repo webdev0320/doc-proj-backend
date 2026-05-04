@@ -109,6 +109,7 @@ model ConfiguredDocType {
   label       String
   description String?
   isCommon    Boolean  @default(false)
+  checklists  Json?    @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
