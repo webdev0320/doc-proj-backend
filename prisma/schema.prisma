@@ -70,21 +70,23 @@ model Page {
 }
 
 model Document {
-  id           String         @id @default(cuid())
-  userId       String
-  blobId       String
-  name         String
-  documentType String
-  status       String         @default("AI_CLASSIFIED")
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  user         User           @relation(fields: [userId], references: [id])
-  auditLogs    AuditLog[]
-  pages        DocumentPage[]
-  blob         Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  id                 String         @id @default(cuid())
+  userId             String
+  blobId             String
+  name               String
+  documentType       String
+  status             String         @default("AI_CLASSIFIED")
+  checklistResponses Json?          @default("[]")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  user               User           @relation(fields: [userId], references: [id])
+  auditLogs          AuditLog[]
+  pages              DocumentPage[]
+  blob               Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
 
   @@map("documents")
 }
+
 
 model DocumentPage {
   id         String   @id @default(cuid())

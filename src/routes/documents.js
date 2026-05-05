@@ -125,7 +125,7 @@ router.post('/merge', async (req, res) => {
 
 // PATCH /api/documents/:id/verify — mark document as human verified
 router.patch('/:id/verify', async (req, res) => {
-  const { documentType, name, blobId } = req.body;
+  const { documentType, name, blobId, checklistResponses } = req.body;
   const doc = await prisma.$transaction(async (tx) => {
     const updated = await tx.document.update({
       where: { id: req.params.id },
@@ -133,9 +133,11 @@ router.patch('/:id/verify', async (req, res) => {
         status: 'HUMAN_VERIFIED',
         ...(documentType && { documentType }),
         ...(name && { name }),
+        ...(checklistResponses && { checklistResponses: checklistResponses }),
       },
       include: { pages: { include: { page: true } } }
     });
+
 
     // Recording corrections for the feedback loop
     if (documentType) {
@@ -195,4 +197,15 @@ router.patch('/:id/rename', async (req, res) => {
   res.json({ success: true, data: doc });
 });
 
+// PATCH /api/documents/:id/checklist — update checklist state
+router.patch('/:id/checklist', async (req, res) => {
+  const { checklistResponses } = req.body;
+  const doc = await prisma.document.update({
+    where: { id: req.params.id },
+    data: { checklistResponses }
+  });
+  res.json({ success: true, data: doc });
+});
+
 module.exports = router;
+
