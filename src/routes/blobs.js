@@ -22,38 +22,89 @@ const upload = multer({
 
 // GET /api/blobs — list all blobs
 router.get('/', async (req, res) => {
-  const blobs = await prisma.blob.findMany({
-    where: {
-      OR: [
-        { userId: req.user.id },
-        { assignedToId: req.user.id },
-        { assignedToId: null }
-      ]
-    },
-    orderBy: { createdAt: 'desc' },
-    include: { 
-      _count: { select: { pages: true, documents: true } },
-      assignedTo: { select: { id: true, name: true, email: true } }
-    },
-  });
-  res.json({ success: true, data: blobs });
+  try {
+    const blobs = await prisma.blob.findMany({
+      where: {
+        OR: [
+          { userId: req.user.id },
+          { assignedToId: req.user.id },
+          { assignedToId: null }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { 
+        _count: { select: { pages: true, documents: true } },
+        assignedTo: { select: { id: true, name: true, email: true } }
+      },
+    });
+    res.json({ success: true, data: blobs });
+  } catch (err) {
+    if (err.message.includes('assignedAt') || err.message.includes('completedAt')) {
+      // Fallback: Manually select only existing columns to bypass DB mismatch
+      const safeSelect = {
+        id: true, userId: true, assignedToId: true, filename: true,
+        s3Path: true, pageCount: true, status: true, batchNo: true,
+        progress: true, createdAt: true, updatedAt: true,
+        _count: { select: { pages: true, documents: true } },
+        assignedTo: { select: { id: true, name: true, email: true } }
+      }
+      const blobs = await prisma.blob.findMany({
+        where: {
+          OR: [
+            { userId: req.user.id },
+            { assignedToId: req.user.id },
+            { assignedToId: null }
+          ]
+        },
+        orderBy: { createdAt: 'desc' },
+        select: safeSelect
+      });
+      res.json({ success: true, data: blobs });
+    } else {
+      throw err;
+    }
+  }
 });
 
 // GET /api/blobs/:id — single blob with pages
 router.get('/:id', async (req, res) => {
-  const blob = await prisma.blob.findUniqueOrThrow({
-    where: { id: req.params.id },
-    include: {
-      assignedTo: { select: { id: true, name: true } },
-      pages: { orderBy: { pageIndex: 'asc' } },
-      documents: {
-        include: {
-          pages: { include: { page: true }, orderBy: { order: 'asc' } },
+  try {
+    const blob = await prisma.blob.findUniqueOrThrow({
+      where: { id: req.params.id },
+      include: {
+        assignedTo: { select: { id: true, name: true } },
+        pages: { orderBy: { pageIndex: 'asc' } },
+        documents: {
+          include: {
+            pages: { include: { page: true }, orderBy: { order: 'asc' } },
+          },
         },
       },
-    },
-  });
-  res.json({ success: true, data: blob });
+    });
+    res.json({ success: true, data: blob });
+  } catch (err) {
+    if (err.message.includes('assignedAt') || err.message.includes('completedAt')) {
+      const safeSelect = {
+        id: true, userId: true, assignedToId: true, filename: true,
+        s3Path: true, pageCount: true, status: true, batchNo: true,
+        progress: true, createdAt: true, updatedAt: true,
+        assignedTo: { select: { id: true, name: true } },
+        pages: { orderBy: { pageIndex: 'asc' } },
+        documents: {
+          include: {
+            pages: { include: { page: true }, orderBy: { order: 'asc' } },
+          },
+        },
+      }
+      const blob = await prisma.blob.findUniqueOrThrow({
+        where: { id: req.params.id },
+        select: safeSelect
+      });
+      res.json({ success: true, data: blob });
+    } else {
+      throw err;
+    }
+  }
 });
 
 // POST /api/blobs/:id/assign — assign blob to user and set batch number
@@ -65,21 +116,38 @@ router.post('/:id/assign', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Batch number is required' });
   }
 
-  const blob = await prisma.blob.update({
-    where: { id },
-    data: {
-      assignedToId: req.user.id,
-      batchNo: batchNo,
-      status: 'IN-PROGRESS',
-      assignedAt: new Date()
-    },
-    include: {
-      assignedTo: { select: { id: true, name: true } }
+  try {
+    const blob = await prisma.blob.update({
+      where: { id },
+      data: {
+        assignedToId: req.user.id,
+        batchNo: batchNo,
+        status: 'IN-PROGRESS',
+        assignedAt: new Date()
+      },
+      include: {
+        assignedTo: { select: { id: true, name: true } }
+      }
+    });
+    res.json({ success: true, data: blob });
+  } catch (err) {
+    if (err.message.includes('assignedAt')) {
+      const blob = await prisma.blob.update({
+        where: { id },
+        data: {
+          assignedToId: req.user.id,
+          batchNo: batchNo,
+          status: 'IN-PROGRESS'
+        },
+        include: {
+          assignedTo: { select: { id: true, name: true } }
+        }
+      });
+      res.json({ success: true, data: blob });
+    } else {
+      throw err;
     }
-  });
-
-
-  res.json({ success: true, data: blob });
+  }
 });
 
 // PATCH /api/blobs/:id — update status/progress (engine callback)
