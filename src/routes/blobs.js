@@ -23,9 +23,18 @@ const upload = multer({
 // GET /api/blobs — list all blobs
 router.get('/', async (req, res) => {
   const blobs = await prisma.blob.findMany({
-    where: { userId: req.user.id },
+    where: {
+      OR: [
+        { userId: req.user.id },
+        { assignedToId: req.user.id },
+        { assignedToId: null }
+      ]
+    },
     orderBy: { createdAt: 'desc' },
-    include: { _count: { select: { pages: true, documents: true } } },
+    include: { 
+      _count: { select: { pages: true, documents: true } },
+      assignedTo: { select: { id: true, name: true, email: true } }
+    },
   });
   res.json({ success: true, data: blobs });
 });
@@ -35,6 +44,7 @@ router.get('/:id', async (req, res) => {
   const blob = await prisma.blob.findUniqueOrThrow({
     where: { id: req.params.id },
     include: {
+      assignedTo: { select: { id: true, name: true } },
       pages: { orderBy: { pageIndex: 'asc' } },
       documents: {
         include: {
@@ -43,6 +53,30 @@ router.get('/:id', async (req, res) => {
       },
     },
   });
+  res.json({ success: true, data: blob });
+});
+
+// POST /api/blobs/:id/assign — assign blob to user and set batch number
+router.post('/:id/assign', async (req, res) => {
+  const { id } = req.params;
+  const { batchNo } = req.body;
+
+  if (!batchNo) {
+    return res.status(400).json({ success: false, error: 'Batch number is required' });
+  }
+
+  const blob = await prisma.blob.update({
+    where: { id },
+    data: {
+      assignedToId: req.user.id,
+      batchNo: batchNo,
+      status: 'IN-PROGRESS' // Align with the screenshot's status
+    },
+    include: {
+      assignedTo: { select: { id: true, name: true } }
+    }
+  });
+
   res.json({ success: true, data: blob });
 });
 
