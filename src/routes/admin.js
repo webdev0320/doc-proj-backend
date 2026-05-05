@@ -207,4 +207,56 @@ router.put('/storage-settings', adminMiddleware, async (req, res) => {
   }
 });
 
+// --- GENERIC CHECKLISTS ---
+
+// GET /api/admin/checklists
+router.get('/checklists', async (req, res) => {
+  try {
+    const items = await prisma.checklist.findMany({
+      orderBy: { createdAt: 'asc' }
+    });
+    res.json({ success: true, data: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/checklists
+router.post('/checklists', adminMiddleware, async (req, res) => {
+  const { item } = req.body;
+  try {
+    const newItem = await prisma.checklist.create({
+      data: { item }
+    });
+    res.json({ success: true, data: newItem });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/admin/checklists/:id
+router.patch('/checklists/:id', adminMiddleware, async (req, res) => {
+  const { item } = req.body;
+  try {
+    const updated = await prisma.checklist.update({
+      where: { id: req.params.id },
+      data: { item }
+    });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/admin/checklists/:id
+router.delete('/checklists/:id', adminMiddleware, async (req, res) => {
+  try {
+    await prisma.checklist.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+

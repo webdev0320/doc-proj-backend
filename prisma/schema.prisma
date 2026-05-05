@@ -145,3 +145,12 @@ model StorageSettings {
 
   @@map("storage_settings")
 }
+
+model Checklist {
+  id        String   @id @default(cuid())
+  item      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("checklists")
+}
