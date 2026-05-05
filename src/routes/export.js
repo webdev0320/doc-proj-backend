@@ -48,7 +48,15 @@ router.post('/:blobId', async (req, res) => {
       storage_settings: storageSettings
     });
 
-    // 4. Update blob status to EXPORTED or similar if needed
+    // 4. Update blob status to COMPLETED
+    await prisma.blob.update({
+      where: { id: blobId },
+      data: { 
+        status: 'COMPLETED',
+        completedAt: new Date()
+      }
+    });
+
     await prisma.auditLog.create({
       data: {
         blobId,
@@ -57,6 +65,7 @@ router.post('/:blobId', async (req, res) => {
         performedBy: 'human'
       }
     });
+
 
     res.json({ success: true, files: response.data.files });
   } catch (err) {

@@ -70,12 +70,14 @@ router.post('/:id/assign', async (req, res) => {
     data: {
       assignedToId: req.user.id,
       batchNo: batchNo,
-      status: 'IN-PROGRESS' // Align with the screenshot's status
+      status: 'IN-PROGRESS',
+      assignedAt: new Date()
     },
     include: {
       assignedTo: { select: { id: true, name: true } }
     }
   });
+
 
   res.json({ success: true, data: blob });
 });

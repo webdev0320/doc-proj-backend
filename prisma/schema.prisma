@@ -33,15 +33,17 @@ model Blob {
   pageCount    Int        @default(0)
   status       String     @default("PENDING")
   batchNo      String?
-  workstream   String?    @default("LC Servicing")
   progress     Int        @default(0)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  assignedAt   DateTime?
+  completedAt  DateTime?
   user         User       @relation("UploadedBlobs", fields: [userId], references: [id])
   assignedTo   User?      @relation("AssignedBlobs", fields: [assignedToId], references: [id])
   auditLogs    AuditLog[]
   documents    Document[]
   pages        Page[]
+
 
   @@map("blobs")
 }
