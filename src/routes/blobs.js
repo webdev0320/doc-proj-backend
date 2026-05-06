@@ -180,21 +180,30 @@ router.post('/:id/pages', async (req, res) => {
   }
 
   logger.info(`Engine callback for blob ${id}: ${pages.length} pages, status=${status}, mode=${mode || 'default'}`);
+  if (pages.length > 0) {
+    logger.info(`Sample page keys: ${Object.keys(pages[0]).join(', ')}`);
+  }
 
   // ── APPEND MODE: just insert new pages, keep existing ones ─────────────
   if (mode === 'append') {
     try {
       await prisma.page.createMany({
-        data: pages.map(p => ({
-          blobId: id,
-          pageIndex: p.page_index,
-          s3Path: p.s3_path,
-          aiLabel: p.ai_label,
-          confidenceScore: p.confidence_score,
-          isFlagged: p.is_flagged || false,
-          anomalyFlags: p.anomaly_flags,
-          extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
-        })),
+          const extData = p.extracted_data || p.data || p.fields || p.ocr;
+          const finalData = extData && Object.keys(extData).length > 0 
+            ? extData 
+            : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
+
+          return {
+            blobId: id,
+            pageIndex: p.page_index,
+            s3Path: p.s3_path,
+            aiLabel: p.ai_label,
+            confidenceScore: p.confidence_score,
+            isFlagged: p.is_flagged || false,
+            anomalyFlags: p.anomaly_flags,
+            extractedData: finalData ? (typeof finalData === 'object' ? JSON.stringify(finalData) : String(finalData)) : null,
+          };
+        }),
         skipDuplicates: true,
       });
       const totalPages = await prisma.page.count({ where: { blobId: id } });
@@ -244,16 +253,23 @@ router.post('/:id/pages', async (req, res) => {
         // COMPLETED path: delete old stubs and bulk-insert final records
         await tx.page.deleteMany({ where: { blobId: id } });
         await tx.page.createMany({
-          data: pages.map(p => ({
-            blobId: id,
-            pageIndex: p.page_index,
-            s3Path: p.s3_path,
-            aiLabel: p.ai_label,
-            confidenceScore: p.confidence_score,
-            isFlagged: p.is_flagged || false,
-            anomalyFlags: p.anomaly_flags,
-            extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
-          })),
+          data: pages.map(p => {
+            const extData = p.extracted_data || p.data || p.fields || p.ocr;
+            const finalData = extData && Object.keys(extData).length > 0 
+              ? extData 
+              : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
+
+            return {
+              blobId: id,
+              pageIndex: p.page_index,
+              s3Path: p.s3_path,
+              aiLabel: p.ai_label,
+              confidenceScore: p.confidence_score,
+              isFlagged: p.is_flagged || false,
+              anomalyFlags: p.anomaly_flags,
+              extractedData: finalData ? (typeof finalData === 'object' ? JSON.stringify(finalData) : String(finalData)) : null,
+            };
+          }),
         });
         await tx.blob.update({
           where: { id },
