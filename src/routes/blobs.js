@@ -193,7 +193,7 @@ router.post('/:id/pages', async (req, res) => {
           confidenceScore: p.confidence_score,
           isFlagged: p.is_flagged || false,
           anomalyFlags: p.anomaly_flags,
-          extractedData: p.extracted_data,
+          extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
         })),
         skipDuplicates: true,
       });
@@ -231,7 +231,7 @@ router.post('/:id/pages', async (req, res) => {
               confidenceScore: p.confidence_score,
               isFlagged: p.is_flagged || false,
               anomalyFlags: p.anomaly_flags,
-              extractedData: p.extracted_data,
+              extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
             })),
             skipDuplicates: true,
           });
@@ -252,7 +252,7 @@ router.post('/:id/pages', async (req, res) => {
             confidenceScore: p.confidence_score,
             isFlagged: p.is_flagged || false,
             anomalyFlags: p.anomaly_flags,
-            extractedData: p.extracted_data,
+            extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
           })),
         });
         await tx.blob.update({
