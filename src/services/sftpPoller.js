@@ -47,29 +47,32 @@ async function pollSftp() {
         await encryptFile(tempPath, filePath);
         await fs.unlink(tempPath);
 
-        for (const user of users) {
-          const blob = await prisma.blob.create({
-            data: {
-              userId: user.id,
-              filename: file.name,
-              s3Path: fileName,
-              status: 'PROCESSING',
-            },
-          });
+        // Create only ONE blob for the system, assigned to the first active user (uploader)
+        const primaryUser = users.find(u => u.role === 'ADMIN') || users[0];
+        
+        const blob = await prisma.blob.create({
+          data: {
+            userId: primaryUser.id,
+            filename: file.name,
+            s3Path: fileName,
+            status: 'PROCESSING',
+          },
+        });
+        
+        try {
+          const { getStorageConfig } = require('../utils/storage');
+          const storageSettings = await getStorageConfig();
+          const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
           
-          try {
-            const { getStorageConfig } = require('../utils/storage');
-            const storageSettings = await getStorageConfig();
-            const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
-            await axios.post(engineUrl, {
-              blob_id: blob.id,
-              storage_path: fileName,
-              storage_settings: storageSettings
-            }, { timeout: 30000 }); // 30s timeout
-          } catch (err) {
-            logger.error(`Failed to trigger engine for remote blob ${blob.id}: ${err.message}`);
-            await prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } });
-          }
+          logger.info(`Triggering engine for blob ${blob.id} (File: ${file.name})`);
+          await axios.post(engineUrl, {
+            blob_id: blob.id,
+            storage_path: fileName,
+            storage_settings: storageSettings
+          }, { timeout: 30000 });
+        } catch (err) {
+          logger.error(`Failed to trigger engine for remote blob ${blob.id}: ${err.message}`);
+          await prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } });
         }
         await moveToArchive(file.name);
         logger.info(`Moved ${file.name} to Archive.`);
