@@ -119,10 +119,10 @@ router.get('/doc-types', async (req, res) => {
 
 // POST /api/admin/doc-types - Add new template
 router.post('/doc-types', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon, checklists } = req.body;
+  const { code, label, description, isCommon } = req.body;
   try {
     const type = await prisma.configuredDocType.create({
-      data: { code, label, description, isCommon, checklists: checklists || [] }
+      data: { code, label, description, isCommon }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -132,11 +132,11 @@ router.post('/doc-types', adminMiddleware, async (req, res) => {
 
 // PATCH /api/admin/doc-types/:id - Update template
 router.patch('/doc-types/:id', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon, checklists } = req.body;
+  const { code, label, description, isCommon } = req.body;
   try {
     const type = await prisma.configuredDocType.update({
       where: { id: req.params.id },
-      data: { code, label, description, isCommon, checklists }
+      data: { code, label, description, isCommon }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -202,57 +202,6 @@ router.put('/storage-settings', adminMiddleware, async (req, res) => {
     }
 
     res.json({ success: true, data: settings });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// --- GENERIC CHECKLISTS ---
-
-// GET /api/admin/checklists
-router.get('/checklists', async (req, res) => {
-  try {
-    const items = await prisma.checklist.findMany({
-      orderBy: { createdAt: 'asc' }
-    });
-    res.json({ success: true, data: items });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// POST /api/admin/checklists
-router.post('/checklists', adminMiddleware, async (req, res) => {
-  const { item } = req.body;
-  try {
-    const newItem = await prisma.checklist.create({
-      data: { item }
-    });
-    res.json({ success: true, data: newItem });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// PATCH /api/admin/checklists/:id
-router.patch('/checklists/:id', adminMiddleware, async (req, res) => {
-  const { item } = req.body;
-  try {
-    const updated = await prisma.checklist.update({
-      where: { id: req.params.id },
-      data: { item }
-    });
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// DELETE /api/admin/checklists/:id
-router.delete('/checklists/:id', adminMiddleware, async (req, res) => {
-  try {
-    await prisma.checklist.delete({ where: { id: req.params.id } });
-    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
