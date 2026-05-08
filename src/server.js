@@ -27,14 +27,28 @@ const PORT = process.env.PORT || 3001;
 const path = require('path');
 
 // Middleware
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'https://doc-project-frontend.vercel.app',
-  'http://localhost:5173'
-].filter(Boolean);
-
 app.use(cors({ 
-  origin: allowedOrigins, 
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      'https://doc-project-frontend.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ].filter(Boolean);
+
+    if (
+      allowedOrigins.includes(origin) || 
+      origin.endsWith('.vercel.app') || 
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:')
+    ) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }, 
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
