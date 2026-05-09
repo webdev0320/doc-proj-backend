@@ -148,7 +148,6 @@ router.patch('/:id/verify', async (req, res) => {
       }
     }
 
-
     // Recording corrections for the feedback loop
     if (documentType) {
       for (const dp of updated.pages) {
@@ -177,6 +176,16 @@ router.patch('/:id/verify', async (req, res) => {
     return updated;
   });
 
+  res.json({ success: true, data: doc });
+});
+
+// PATCH /api/documents/:id/checklists
+router.patch('/:id/checklists', async (req, res) => {
+  const { checklists } = req.body;
+  const doc = await prisma.document.update({
+    where: { id: req.params.id },
+    data: { checklists }
+  });
   res.json({ success: true, data: doc });
 });
 
