@@ -119,10 +119,10 @@ router.get('/doc-types', async (req, res) => {
 
 // POST /api/admin/doc-types - Add new template
 router.post('/doc-types', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon } = req.body;
+  const { code, label, description, isCommon, checklists } = req.body;
   try {
     const type = await prisma.configuredDocType.create({
-      data: { code, label, description, isCommon }
+      data: { code, label, description, isCommon, checklists }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -132,11 +132,11 @@ router.post('/doc-types', adminMiddleware, async (req, res) => {
 
 // PATCH /api/admin/doc-types/:id - Update template
 router.patch('/doc-types/:id', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon } = req.body;
+  const { code, label, description, isCommon, checklists } = req.body;
   try {
     const type = await prisma.configuredDocType.update({
       where: { id: req.params.id },
-      data: { code, label, description, isCommon }
+      data: { code, label, description, isCommon, checklists }
     });
     res.json({ success: true, data: type });
   } catch (err) {
