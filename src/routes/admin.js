@@ -119,10 +119,10 @@ router.get('/doc-types', async (req, res) => {
 
 // POST /api/admin/doc-types - Add new template
 router.post('/doc-types', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon, checklists } = req.body;
+  const { code, label, description, isCommon } = req.body;
   try {
     const type = await prisma.configuredDocType.create({
-      data: { code, label, description, isCommon, checklists }
+      data: { code, label, description, isCommon }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -132,11 +132,11 @@ router.post('/doc-types', adminMiddleware, async (req, res) => {
 
 // PATCH /api/admin/doc-types/:id - Update template
 router.patch('/doc-types/:id', adminMiddleware, async (req, res) => {
-  const { code, label, description, isCommon, checklists } = req.body;
+  const { code, label, description, isCommon } = req.body;
   try {
     const type = await prisma.configuredDocType.update({
       where: { id: req.params.id },
-      data: { code, label, description, isCommon, checklists }
+      data: { code, label, description, isCommon }
     });
     res.json({ success: true, data: type });
   } catch (err) {
@@ -148,6 +148,43 @@ router.patch('/doc-types/:id', adminMiddleware, async (req, res) => {
 router.delete('/doc-types/:id', adminMiddleware, async (req, res) => {
   try {
     await prisma.configuredDocType.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- CHECKLISTS ---
+
+// GET /api/admin/checklists
+router.get('/checklists', async (req, res) => {
+  try {
+    const items = await prisma.checklistItem.findMany({
+      orderBy: { createdAt: 'asc' }
+    });
+    res.json({ success: true, data: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/admin/checklists
+router.post('/checklists', adminMiddleware, async (req, res) => {
+  const { text } = req.body;
+  try {
+    const item = await prisma.checklistItem.create({
+      data: { text }
+    });
+    res.json({ success: true, data: item });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/admin/checklists/:id
+router.delete('/checklists/:id', adminMiddleware, async (req, res) => {
+  try {
+    await prisma.checklistItem.delete({ where: { id: req.params.id } });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

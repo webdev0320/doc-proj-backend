@@ -76,6 +76,7 @@ model Document {
   name               String
   documentType       String
   status             String         @default("AI_CLASSIFIED")
+  checklists         Json?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   user               User           @relation(fields: [userId], references: [id])
@@ -99,6 +100,7 @@ model DocumentPage {
   @@map("document_pages")
 }
 
+
 model AuditLog {
   id          String    @id @default(cuid())
   blobId      String
@@ -119,11 +121,18 @@ model ConfiguredDocType {
   label       String
   description String?
   isCommon    Boolean  @default(false)
-  checklists  Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("configured_doc_types")
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  text      String
+  createdAt DateTime @default(now())
+
+  @@map("checklist_items")
 }
 
 model StorageSettings {
