@@ -188,6 +188,7 @@ router.post('/:id/pages', async (req, res) => {
   if (mode === 'append') {
     try {
       await prisma.page.createMany({
+        data: pages.map(p => {
           const extData = p.extracted_data || p.data || p.fields || p.ocr;
           const finalData = extData && Object.keys(extData).length > 0 
             ? extData 
