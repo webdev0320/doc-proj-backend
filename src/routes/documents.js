@@ -125,7 +125,7 @@ router.post('/merge', async (req, res) => {
 
 // PATCH /api/documents/:id/verify — mark document as human verified
 router.patch('/:id/verify', async (req, res) => {
-  const { documentType, name, blobId } = req.body;
+  const { documentType, name, blobId, extractedData } = req.body;
   const doc = await prisma.$transaction(async (tx) => {
     const updated = await tx.document.update({
       where: { id: req.params.id },
@@ -134,8 +134,19 @@ router.patch('/:id/verify', async (req, res) => {
         ...(documentType && { documentType }),
         ...(name && { name }),
       },
-      include: { pages: { include: { page: true } } }
+      include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } }
     });
+
+    if (extractedData && Object.keys(extractedData).length > 0) {
+      const firstPage = updated.pages[0];
+      if (firstPage) {
+        await tx.page.update({
+          where: { id: firstPage.pageId },
+          data: { extractedData: JSON.stringify(extractedData) }
+        });
+        firstPage.page.extractedData = JSON.stringify(extractedData);
+      }
+    }
 
 
     // Recording corrections for the feedback loop
