@@ -153,3 +153,15 @@ model StorageSettings {
 
   @@map("storage_settings")
 }
+
+model ClassificationCorrection {
+  id                String   @id @default(cuid())
+  blobId            String
+  originalAiLabel   String
+  finalHumanLabel   String
+  pageThumbnailPath String
+  createdAt         DateTime @default(now())
+
+  @@map("classification_corrections")
+}
+

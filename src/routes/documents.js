@@ -173,6 +173,19 @@ router.patch('/:id/verify', async (req, res) => {
       },
     });
 
+    // 4. Auto-complete blob if all docs are verified
+    const allDocs = await tx.document.findMany({
+      where: { blobId: updated.blobId }
+    });
+    
+    const allVerified = allDocs.every(d => d.status === 'HUMAN_VERIFIED');
+    if (allVerified) {
+      await tx.blob.update({
+        where: { id: updated.blobId },
+        data: { status: 'COMPLETED', completedAt: new Date() }
+      });
+    }
+
     return updated;
   });
 
