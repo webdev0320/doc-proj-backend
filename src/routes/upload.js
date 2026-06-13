@@ -34,7 +34,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     logger.error(`Upload to storage failed: ${err.message}`);
-    res.status(500).json({ success: false, message: 'Failed to upload file to storage provider' });
+    res.status(500).json({ success: false, message: ${err.message} });
   }
 });
 
