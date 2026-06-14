@@ -6,22 +6,33 @@ const { getStorageConfig } = require('../utils/storage');
 
 const router = express.Router();
 
+const LOCAL_PAGES_DIR = path.join(__dirname, '../../../storage/pages');
+
 /**
  * GET /api/storage/:folder/:filename
- * Proxies the file from SFTP to the browser.
- * This allows Vercel to "serve" files from your private SFTP server.
+ * Tries local file first, then falls back to SFTP proxy.
  */
 router.get('/:folder/:filename', async (req, res) => {
   const { folder, filename } = req.params;
-  const settings = await getStorageConfig();
-  const localPath = path.join('/tmp', filename);
 
-  console.log(`Proxy request: ${folder}/${filename}`);
+  // --- Fast path: serve from local disk if the file exists ---
+  if (folder === 'pages') {
+    const localPath = path.join(LOCAL_PAGES_DIR, filename);
+    if (fs.existsSync(localPath)) {
+      console.log(`Serving locally: ${localPath}`);
+      return res.sendFile(localPath);
+    }
+  }
+
+  // --- Fallback: proxy from SFTP (used in production/Vercel) ---
+  const settings = await getStorageConfig();
+  const tmpPath = path.join('/tmp', filename);
+
+  console.log(`Local file not found. Proxy request: ${folder}/${filename}`);
 
   try {
     if (settings.provider === 'SFTP') {
       const sftp = new Client();
-      console.log(`Connecting to SFTP for proxy...`);
       await sftp.connect({
         host: settings.sftpHost,
         port: settings.sftpPort,
@@ -30,27 +41,22 @@ router.get('/:folder/:filename', async (req, res) => {
       });
 
       const remotePath = `${folder}/${filename}`;
-      console.log(`Fetching from SFTP: ${remotePath}`);
-      
       try {
-        await sftp.fastGet(remotePath, localPath);
+        await sftp.fastGet(remotePath, tmpPath);
       } catch (e) {
         console.warn(`Relative path failed, trying absolute: /${remotePath}`);
-        await sftp.fastGet(`/${remotePath}`, localPath);
+        await sftp.fastGet(`/${remotePath}`, tmpPath);
       }
-      
       await sftp.end();
 
-      console.log(`Successfully fetched ${filename}, sending to browser.`);
-      res.sendFile(localPath, () => {
-        // Cleanup /tmp after sending
-        try { if (fs.existsSync(localPath)) fs.unlinkSync(localPath); } catch (e) {}
+      res.sendFile(tmpPath, () => {
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {}
       });
     } else {
       res.status(400).send('Storage provider not supported for proxying');
     }
   } catch (err) {
-    console.error('SFTP Proxy Error:', err.message);
+    console.error('Storage Proxy Error:', err.message);
     res.status(404).send(`File not found: ${err.message}`);
   }
 });

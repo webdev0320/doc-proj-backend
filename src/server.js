@@ -28,9 +28,7 @@ const path = require('path');
 
 // Middleware
 app.use(cors({ 
-  origin: function (origin, callback) {
-    callback(null, true);
-  }, 
+  origin: true, // Allows requests from any origin that sends credentials
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
