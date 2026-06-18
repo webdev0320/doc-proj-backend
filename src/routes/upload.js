@@ -24,7 +24,6 @@ const upload = multer({
 /**
  * POST /api/upload
  * Direct ingestion: encrypt file locally, create Blob record, trigger engine immediately.
- * Also uploads to SFTP/S3 as a backup copy (best-effort, non-blocking).
  */
 router.post('/', upload.single('file'), async (req, res) => {
   if (!req.file) {
@@ -64,11 +63,6 @@ router.post('/', upload.single('file'), async (req, res) => {
     }).catch(err => {
       logger.error(`Upload: failed to trigger engine for blob ${blob.id}: ${err.message}`);
       prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } }).catch(() => {});
-    });
-
-    // 4. Also upload to remote storage (best-effort, non-blocking)
-    uploadToRemote(blobName, req.file.buffer, 'Inbound').catch(err => {
-      logger.warn(`Upload: remote backup upload failed (non-fatal): ${err.message}`);
     });
 
     res.status(202).json({
