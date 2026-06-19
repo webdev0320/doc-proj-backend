@@ -153,7 +153,7 @@ router.post('/:id/assign', async (req, res) => {
 // PATCH /api/blobs/:id — update status/progress (engine callback)
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
-  const { status, progress } = req.body;
+  const { status, progress, error } = req.body;
 
   const blob = await prisma.blob.update({
     where: { id },
@@ -162,6 +162,23 @@ router.patch('/:id', async (req, res) => {
       ...(progress !== undefined && { progress })
     }
   });
+
+  // If the engine supplied an error message, record it for diagnostics
+  try {
+    if (error) {
+      await prisma.auditLog.create({
+        data: {
+          blobId: id,
+          action: 'ENGINE_FAILED',
+          payload: typeof error === 'string' ? error : JSON.stringify(error),
+          performedBy: 'ai-engine'
+        }
+      });
+    }
+  } catch (logErr) {
+    // Don't fail the request if audit logging fails
+    logger.error(`Failed to write engine error audit log for blob ${id}: ${logErr.message}`);
+  }
 
   res.json({ success: true, data: blob });
 });
