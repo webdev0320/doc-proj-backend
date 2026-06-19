@@ -206,6 +206,40 @@ router.get('/storage-settings', adminMiddleware, async (req, res) => {
   }
 });
 
+// --- ENGINE / PROCESSING INSIGHTS ---
+
+// GET /api/admin/engine/errors - recent engine-related audit logs
+router.get('/engine/errors', adminMiddleware, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit || '50', 10);
+    const logs = await prisma.auditLog.findMany({
+      where: { action: { in: ['ENGINE_FAILED', 'ENGINE_FAILED_TRIGGER', 'ENGINE_ATTEMPT', 'ENGINE_REQUEUE', 'ENGINE_TRIGGERED'] } },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { blob: { select: { id: true, filename: true, status: true } } }
+    });
+    res.json({ success: true, data: logs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/admin/engine/failed-blobs - list blobs currently marked FAILED
+router.get('/engine/failed-blobs', adminMiddleware, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit || '100', 10);
+    const blobs = await prisma.blob.findMany({
+      where: { status: 'FAILED' },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      include: { _count: { select: { pages: true, documents: true } } }
+    });
+    res.json({ success: true, data: blobs });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // PUT /api/admin/storage-settings
 router.put('/storage-settings', adminMiddleware, async (req, res) => {
   try {

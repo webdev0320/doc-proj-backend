@@ -81,7 +81,18 @@ router.get('/:id', async (req, res) => {
         },
       },
     });
-    res.json({ success: true, data: blob });
+    // Attach latest engine failure (if any) for easier diagnostics in UI
+    try {
+      const engineError = await prisma.auditLog.findFirst({
+        where: { blobId: blob.id, action: 'ENGINE_FAILED' },
+        orderBy: { createdAt: 'desc' },
+        select: { payload: true, createdAt: true }
+      });
+      return res.json({ success: true, data: { ...blob, engineError } });
+    } catch (err) {
+      logger.warn(`Could not fetch engine error for blob ${blob.id}: ${err.message}`);
+      return res.json({ success: true, data: blob });
+    }
   } catch (err) {
     if (err.message.includes('assignedAt') || err.message.includes('completedAt')) {
       const safeSelect = {
@@ -100,10 +111,37 @@ router.get('/:id', async (req, res) => {
         where: { id: req.params.id },
         select: safeSelect
       });
-      res.json({ success: true, data: blob });
+      try {
+        const engineError = await prisma.auditLog.findFirst({
+          where: { blobId: blob.id, action: 'ENGINE_FAILED' },
+          orderBy: { createdAt: 'desc' },
+          select: { payload: true, createdAt: true }
+        });
+        return res.json({ success: true, data: { ...blob, engineError } });
+      } catch (err2) {
+        logger.warn(`Could not fetch engine error for blob ${blob.id}: ${err2.message}`);
+        return res.json({ success: true, data: blob });
+      }
     } else {
       throw err;
     }
+  }
+});
+
+// GET /api/blobs/:id/engine-error — return latest engine failure payload
+router.get('/:id/engine-error', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const entry = await prisma.auditLog.findFirst({
+      where: { blobId: id, action: 'ENGINE_FAILED' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, payload: true, createdAt: true }
+    });
+    if (!entry) return res.json({ success: true, data: null });
+    res.json({ success: true, data: entry });
+  } catch (err) {
+    logger.error(`Failed to fetch engine error for blob ${id}: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
