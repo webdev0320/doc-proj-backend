@@ -36,10 +36,10 @@ router.get('/', async (req, res) => {
         _count: { select: { pages: true, documents: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         auditLogs: {
-          where: { action: 'ENGINE_FAILED' },
+          where: { action: { in: ['ENGINE_FAILED', 'ENGINE_FAILED_TRIGGER', 'ENGINE_ATTEMPT', 'ENGINE_REQUEUE', 'ENGINE_TRIGGERED'] } },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { payload: true, createdAt: true }
+          select: { payload: true, createdAt: true, action: true }
         }
       },
     });
@@ -90,9 +90,9 @@ router.get('/:id', async (req, res) => {
     // Attach latest engine failure (if any) for easier diagnostics in UI
     try {
       const engineError = await prisma.auditLog.findFirst({
-        where: { blobId: blob.id, action: 'ENGINE_FAILED' },
+        where: { blobId: blob.id, action: { in: ['ENGINE_FAILED', 'ENGINE_FAILED_TRIGGER', 'ENGINE_ATTEMPT', 'ENGINE_REQUEUE', 'ENGINE_TRIGGERED'] } },
         orderBy: { createdAt: 'desc' },
-        select: { payload: true, createdAt: true }
+        select: { payload: true, createdAt: true, action: true }
       });
       return res.json({ success: true, data: { ...blob, engineError } });
     } catch (err) {
@@ -119,9 +119,9 @@ router.get('/:id', async (req, res) => {
       });
       try {
         const engineError = await prisma.auditLog.findFirst({
-          where: { blobId: blob.id, action: 'ENGINE_FAILED' },
+          where: { blobId: blob.id, action: { in: ['ENGINE_FAILED', 'ENGINE_FAILED_TRIGGER', 'ENGINE_ATTEMPT', 'ENGINE_REQUEUE', 'ENGINE_TRIGGERED'] } },
           orderBy: { createdAt: 'desc' },
-          select: { payload: true, createdAt: true }
+          select: { payload: true, createdAt: true, action: true }
         });
         return res.json({ success: true, data: { ...blob, engineError } });
       } catch (err2) {
