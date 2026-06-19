@@ -49,15 +49,42 @@ async function triggerEngine(blob, remoteFileName, storageSettings) {
       return { success: true, attempts: attempt };
     } catch (err) {
       lastErr = err;
+      // Build richer error info for diagnostics
+      const errInfo = {
+        message: err.message,
+        code: err.code || null,
+        status: err.response?.status || null,
+        responseData: err.response?.data ? (typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data)) : null,
+        stack: err.stack || null
+      };
+
+      // Truncate large response bodies to avoid oversized DB entries
+      if (errInfo.responseData && errInfo.responseData.length > 5000) {
+        errInfo.responseData = errInfo.responseData.slice(0, 5000) + '...<truncated>';
+      }
+
       logger.warn(`Engine trigger attempt ${attempt} failed for blob ${blob.id}: ${err.message}`);
-      await recordAudit(blob.id, 'ENGINE_ATTEMPT', { attempt, error: err.message });
+      await recordAudit(blob.id, 'ENGINE_ATTEMPT', { attempt, error: errInfo });
       // exponential backoff
       await new Promise(r => setTimeout(r, 1000 * attempt));
     }
   }
 
-  await recordAudit(blob.id, 'ENGINE_FAILED_TRIGGER', { error: lastErr?.message || 'unknown', attempts: maxAttempts });
-  return { success: false, attempts: maxAttempts, error: lastErr };
+  // On final failure, capture the last error details
+  const finalErrInfo = lastErr ? {
+    message: lastErr.message,
+    code: lastErr.code || null,
+    status: lastErr.response?.status || null,
+    responseData: lastErr.response?.data ? (typeof lastErr.response.data === 'string' ? lastErr.response.data : JSON.stringify(lastErr.response.data)) : null,
+    stack: lastErr.stack || null
+  } : { message: 'unknown' };
+
+  if (finalErrInfo.responseData && finalErrInfo.responseData.length > 5000) {
+    finalErrInfo.responseData = finalErrInfo.responseData.slice(0, 5000) + '...<truncated>';
+  }
+
+  await recordAudit(blob.id, 'ENGINE_FAILED_TRIGGER', { error: finalErrInfo, attempts: maxAttempts });
+  return { success: false, attempts: maxAttempts, error: finalErrInfo };
 }
 
 async function pollSftp() {
