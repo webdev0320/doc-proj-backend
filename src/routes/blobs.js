@@ -34,7 +34,13 @@ router.get('/', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       include: { 
         _count: { select: { pages: true, documents: true } },
-        assignedTo: { select: { id: true, name: true, email: true } }
+        assignedTo: { select: { id: true, name: true, email: true } },
+        auditLogs: {
+          where: { action: 'ENGINE_FAILED' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { payload: true, createdAt: true }
+        }
       },
     });
     res.json({ success: true, data: blobs });
