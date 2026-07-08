@@ -41,7 +41,18 @@ router.post('/', upload.single('file'), async (req, res) => {
     await encryptFile(req.file.buffer, encryptedPath);
     logger.info(`Upload: encrypted ${req.file.originalname} -> ${blobName}`);
 
-    // 2. Create blob record immediately
+    // 2. Upload encrypted file to remote storage (SFTP/S3) so the remote engine can fetch it
+    const storageSettings = await getStorageConfig();
+    try {
+      const fs = require('fs');
+      const encryptedBuffer = fs.readFileSync(encryptedPath);
+      await uploadToRemote(blobName, encryptedBuffer, 'Inbound');
+      logger.info(`Upload: pushed ${blobName} to remote Inbound storage`);
+    } catch (remoteErr) {
+      logger.warn(`Upload: could not push to remote storage (engine will use local): ${remoteErr.message}`);
+    }
+
+    // 3. Create blob record immediately
     const blob = await prisma.blob.create({
       data: {
         userId: req.user.id,
@@ -53,22 +64,26 @@ router.post('/', upload.single('file'), async (req, res) => {
     });
     logger.info(`Upload: created blob ${blob.id} for ${req.file.originalname}`);
 
-    // 3. Trigger engine immediately (fire-and-forget)
-    const storageSettings = await getStorageConfig();
+    // 4. Trigger engine immediately (fire-and-forget)
     const engineUrl = `${process.env.ENGINE_URL || 'http://localhost:8000'}/process`;
     axios.post(engineUrl, {
       blob_id: blob.id,
       storage_path: blobName,
       storage_settings: storageSettings,
     }).catch(async (err) => {
-      logger.error(`Upload: failed to trigger engine for blob ${blob.id}: ${err.message}`);
+      // Capture the actual engine response body for meaningful diagnostics
+      const responseBody = err.response?.data
+        ? (typeof err.response.data === 'string' ? err.response.data : JSON.stringify(err.response.data))
+        : null;
+      const engineDetail = responseBody || err.message;
+      logger.error(`Upload: failed to trigger engine for blob ${blob.id} [HTTP ${err.response?.status || 'N/A'}]: ${engineDetail}`);
       try {
         await prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } });
         await prisma.auditLog.create({
           data: {
             blobId: blob.id,
             action: 'ENGINE_FAILED',
-            payload: `Failed to trigger AI engine: ${err.message}`,
+            payload: `Engine trigger failed [HTTP ${err.response?.status || 'N/A'}]: ${engineDetail}`,
             performedBy: 'backend'
           }
         });

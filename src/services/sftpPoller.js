@@ -63,7 +63,7 @@ async function triggerEngine(blob, remoteFileName, storageSettings) {
         errInfo.responseData = errInfo.responseData.slice(0, 5000) + '...<truncated>';
       }
 
-      logger.warn(`Engine trigger attempt ${attempt} failed for blob ${blob.id}: ${err.message}`);
+      logger.warn(`Engine trigger attempt ${attempt} failed for blob ${blob.id} [HTTP ${err.response?.status || 'N/A'}]: ${errInfo.responseData || err.message}`);
       await recordAudit(blob.id, 'ENGINE_ATTEMPT', { attempt, error: errInfo });
       // exponential backoff
       await new Promise(r => setTimeout(r, 1000 * attempt));

@@ -29,13 +29,35 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const path = require('path');
 
-// Middleware
-app.use(cors({ 
-  origin: true, // Allows requests from any origin that sends credentials
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://doc.streamline-global.com',
+  'https://doc-backend.streamline-global.com',
+  // Keep old Vercel domains in case they're still in use
+  'https://doc-proj-backend.vercel.app',
+  'https://mortgage-project-ivory.vercel.app',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow server-to-server (no origin) and whitelisted origins
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+// Explicitly handle preflight for all routes (needed on Vercel)
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(cookieParser());
 

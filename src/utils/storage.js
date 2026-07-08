@@ -6,7 +6,7 @@ const { Readable } = require('stream');
 async function getStorageConfig() {
   let settings = await prisma.storageSettings.findUnique({ where: { id: 'default' } });
   
-  const config = {
+/*  const config = {
     provider: (settings && settings.provider) || 'SFTP',
     sftpHost: (settings && settings.sftpHost) || process.env.SFTP_HOST,
     sftpPort: parseInt((settings && settings.sftpPort) || process.env.SFTP_PORT || '22'),
@@ -16,7 +16,27 @@ async function getStorageConfig() {
     s3Region: (settings && settings.s3Region) || process.env.S3_REGION || 'us-east-1',
     s3AccessKey: (settings && settings.s3AccessKey) || process.env.S3_ACCESS_KEY,
     s3SecretKey: (settings && settings.s3SecretKey) || process.env.S3_SECRET_KEY,
+  };*/
+
+
+  const config = {
+    provider: 'SFTP',
+    sftpHost: process.env.SFTP_HOST,
+    sftpPort: process.env.SFTP_PORT || '22'),
+    sftpUser: process.env.SFTP_USERNAME,
+    sftpPass: process.env.SFTP_PASSWORD,
+    s3Bucket: (settings && settings.s3Bucket) || process.env.S3_BUCKET,
+    s3Region: (settings && settings.s3Region) || process.env.S3_REGION || 'us-east-1',
+    s3AccessKey: (settings && settings.s3AccessKey) || process.env.S3_ACCESS_KEY,
+    s3SecretKey: (settings && settings.s3SecretKey) || process.env.S3_SECRET_KEY,
   };
+
+  // Diagnostic: warn loudly when credentials are missing so logs reveal root cause
+  if (config.provider === 'SFTP' && (!config.sftpHost || !config.sftpUser || !config.sftpPass)) {
+    console.warn(`[StorageConfig] WARNING: SFTP credentials incomplete! host=${config.sftpHost || '(missing)'} user=${config.sftpUser || '(missing)'} pass=${config.sftpPass ? '***' : '(missing)'}. DB record exists: ${!!settings}. Check storageSettings DB table or SFTP_* env vars.`);
+  } else if (config.provider === 'S3' && (!config.s3Bucket || !config.s3AccessKey || !config.s3SecretKey)) {
+    console.warn(`[StorageConfig] WARNING: S3 credentials incomplete! bucket=${config.s3Bucket || '(missing)'}. Check storageSettings DB table or S3_* env vars.`);
+  }
 
   return config;
 }
