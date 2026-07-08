@@ -60,9 +60,21 @@ router.post('/', upload.single('file'), async (req, res) => {
       blob_id: blob.id,
       storage_path: blobName,
       storage_settings: storageSettings,
-    }).catch(err => {
+    }).catch(async (err) => {
       logger.error(`Upload: failed to trigger engine for blob ${blob.id}: ${err.message}`);
-      prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } }).catch(() => {});
+      try {
+        await prisma.blob.update({ where: { id: blob.id }, data: { status: 'FAILED' } });
+        await prisma.auditLog.create({
+          data: {
+            blobId: blob.id,
+            action: 'ENGINE_FAILED',
+            payload: `Failed to trigger AI engine: ${err.message}`,
+            performedBy: 'backend'
+          }
+        });
+      } catch (dbErr) {
+        logger.error(`Failed to record database fail-state for blob ${blob.id}: ${dbErr.message}`);
+      }
     });
 
     res.status(202).json({

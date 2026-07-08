@@ -97,7 +97,7 @@ router.get('/:id', async (req, res) => {
       return res.json({ success: true, data: { ...blob, engineError } });
     } catch (err) {
       logger.warn(`Could not fetch engine error for blob ${blob.id}: ${err.message}`);
-      return res.json({ success: true, data: blob });
+      return res.json({ success: true, data: blob, error:err });
     }
   } catch (err) {
     if (err.message.includes('assignedAt') || err.message.includes('completedAt')) {
@@ -210,6 +210,7 @@ router.patch('/:id', async (req, res) => {
   // If the engine supplied an error message, record it for diagnostics
   try {
     if (error) {
+      logger.error(`[Engine Callback Error] Engine reported processing failure for blob ${id}:`, error);
       await prisma.auditLog.create({
         data: {
           blobId: id,

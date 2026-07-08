@@ -1,6 +1,9 @@
 require('dotenv').config();
 require('express-async-errors');
 
+// Allow self-signed certificates for engine calls
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 // Safety fallback for demo
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'demo-safety-secret-123';
 
