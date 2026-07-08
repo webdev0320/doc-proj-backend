@@ -110,7 +110,11 @@ router.get('/inbound', async (req, res) => {
     res.json({ success: true, data: pdfFiles });
   } catch (err) {
     logger.error(`List inbound failed: ${err.message}`);
-    res.status(500).json({ success: false, message: 'Failed to list inbound files' });
+    res.json({
+      success: false,
+      message: `Failed to list inbound files: ${err.message}`,
+      data: []
+    });
   }
 });
 

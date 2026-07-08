@@ -22,7 +22,7 @@ async function getStorageConfig() {
   const config = {
     provider: 'SFTP',
     sftpHost: process.env.SFTP_HOST,
-    sftpPort: process.env.SFTP_PORT || '22'),
+    sftpPort: '22',
     sftpUser: process.env.SFTP_USERNAME,
     sftpPass: process.env.SFTP_PASSWORD,
     s3Bucket: (settings && settings.s3Bucket) || process.env.S3_BUCKET,

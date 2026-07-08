@@ -5,6 +5,33 @@ const { updateEnv } = require('../utils/env');
 
 const router = express.Router();
 
+// Temporary helper to seed production database from backend environment variables
+router.get('/temp-seed', async (req, res) => {
+  try {
+    const s = await prisma.storageSettings.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        provider: 'SFTP',
+        sftpHost: process.env.SFTP_HOST,
+        sftpPort: parseInt(process.env.SFTP_PORT || '22'),
+        sftpUser: process.env.SFTP_USERNAME,
+        sftpPass: process.env.SFTP_PASSWORD
+      },
+      update: {
+        provider: 'SFTP',
+        sftpHost: process.env.SFTP_HOST,
+        sftpPort: parseInt(process.env.SFTP_PORT || '22'),
+        sftpUser: process.env.SFTP_USERNAME,
+        sftpPass: process.env.SFTP_PASSWORD
+      }
+    });
+    res.json({ success: true, message: 'Production DB seeded successfully!', provider: s.provider, sftpHost: s.sftpHost, sftpUser: s.sftpUser });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Apply auth protection to all routes in this file
 router.use(authMiddleware);
 

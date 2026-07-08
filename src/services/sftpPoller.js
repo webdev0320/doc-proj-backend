@@ -104,6 +104,14 @@ async function pollSftp() {
     }
 
     for (const file of pdfFiles) {
+      // If the file already starts with a UUID prefix, it was uploaded manually via upload.js
+      // and is already being processed. Skip it to avoid double-processing.
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
+      if (uuidRegex.test(file.name)) {
+        logger.info(`Skipping manual upload file in poller: ${file.name}`);
+        continue;
+      }
+
       logger.info(`Found new remote file: ${file.name}`);
       const fileName = `${uuidv4()}-${file.name}`;
       const actualStorageDir = os.platform() === 'win32' 
