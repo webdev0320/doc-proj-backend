@@ -81,7 +81,11 @@ async function uploadToRemote(filename, buffer, folder = 'Inbound') {
       host: settings.sftpHost,
       port: settings.sftpPort,
       username: settings.sftpUser,
-      password: settings.sftpPass
+      password: settings.sftpPass,
+      readyTimeout: 30000,       // fail fast if server unreachable (30s)
+      retries: 2,
+      retry_factor: 2,
+      retry_minTimeout: 2000,
     });
     
     const folderPath = folder; // Removed leading slash
@@ -91,8 +95,9 @@ async function uploadToRemote(filename, buffer, folder = 'Inbound') {
       await sftp.mkdir(folderPath, true);
     }
 
-    console.log(`Uploading ${filename} to ${folderPath}...`);
+    console.log(`Uploading ${filename} (${Math.round(buffer.length / 1024 / 1024)}MB) to ${folderPath}...`);
     await sftp.put(buffer, `${folderPath}/${filename}`);
+    console.log(`Upload complete: ${filename}`);
     await sftp.end();
   }
 }

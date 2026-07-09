@@ -43,14 +43,26 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     // 2. Upload encrypted file to remote storage (SFTP/S3) so the remote engine can fetch it
     const storageSettings = await getStorageConfig();
+    const fileSizeMB = Math.round(req.file.size / 1024 / 1024);
+    if (fileSizeMB > 50) {
+      logger.warn(`Upload: large file detected (${fileSizeMB}MB). SFTP transfer may take several minutes.`);
+    }
     try {
       const fs = require('fs');
       const encryptedBuffer = fs.readFileSync(encryptedPath);
-      await uploadToRemote(blobName, encryptedBuffer, 'Inbound');
-      logger.info(`Upload: pushed ${blobName} to remote Inbound storage`);
+      // Wrap in a 10-minute timeout so we never block forever on huge files
+      const uploadTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`SFTP upload timed out after 10 minutes for ${blobName}`)), 10 * 60 * 1000)
+      );
+      await Promise.race([
+        uploadToRemote(blobName, encryptedBuffer, 'Inbound'),
+        uploadTimeout,
+      ]);
+      logger.info(`Upload: pushed ${blobName} (${fileSizeMB}MB) to remote Inbound storage`);
     } catch (remoteErr) {
       logger.warn(`Upload: could not push to remote storage (engine will use local): ${remoteErr.message}`);
     }
+
 
     // 3. Create blob record immediately
     const blob = await prisma.blob.create({
