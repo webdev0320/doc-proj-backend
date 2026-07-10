@@ -12,7 +12,6 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
     if (allowed.includes(file.mimetype)) cb(null, true);
@@ -207,6 +206,15 @@ router.patch('/:id', async (req, res) => {
     }
   });
 
+  if (status === 'COMPLETED') {
+    // Run final document grouping for all pages (including all chunks)
+    try {
+      await performDocumentGrouping(id, status);
+    } catch (grpErr) {
+      logger.error(`Failed to perform final document grouping for blob ${id}: ${grpErr.message}`);
+    }
+  }
+
   // If the engine supplied an error message, record it for diagnostics
   try {
     if (error) {
@@ -272,7 +280,7 @@ router.post('/:id/pages', async (req, res) => {
       const totalPages = await prisma.page.count({ where: { blobId: id } });
       await prisma.blob.update({
         where: { id },
-        data: { status: 'COMPLETED', pageCount: totalPages, progress: 100 },
+        data: { status: status || 'PROCESSING', pageCount: totalPages },
       });
       return res.json({ success: true, pagesAdded: pages.length, totalPages });
     } catch (err) {
@@ -336,7 +344,7 @@ router.post('/:id/pages', async (req, res) => {
         });
         await tx.blob.update({
           where: { id },
-          data: { status: status || 'COMPLETED', pageCount: pages.length, progress: 100 },
+          data: { status: status || 'PROCESSING', pageCount: pages.length },
         });
       }
     }, { timeout: 30000 }); // Give large batches a longer transaction window
@@ -344,71 +352,7 @@ router.post('/:id/pages', async (req, res) => {
     // ─── Phase 2: Document grouping (COMPLETED only) ─────────────────────────
     // Done OUTSIDE the first transaction so it doesn't extend the write lock.
     if (status !== 'EXPLODED') {
-      // Fetch all freshly-inserted pages in one query
-      const insertedPages = await prisma.page.findMany({
-        where: { blobId: id },
-        orderBy: { pageIndex: 'asc' },
-        select: { id: true, pageIndex: true, aiLabel: true },
-      });
-
-      logger.info(`Phase 2: Found ${insertedPages.length} inserted pages for blob ${id}`);
-
-      const blobData = await prisma.blob.findUnique({ where: { id }, select: { userId: true } });
-
-      // Delete any previously auto-created documents for this blob (clean slate on retry)
-      await prisma.document.deleteMany({ where: { blobId: id } });
-
-      // Group consecutive same-label pages in memory
-      const docGroups = [];
-      let currentLabel = null;
-      let currentGroup = null;
-
-      for (const page of insertedPages) {
-        const label = page.aiLabel || 'UNCLASSIFIED';
-        if (label !== currentLabel) {
-          currentLabel = label;
-          currentGroup = { label, pageIds: [] };
-          docGroups.push(currentGroup);
-        }
-        currentGroup.pageIds.push(page.id);
-      }
-
-      logger.info(`Phase 2: Created ${docGroups.length} document groups`);
-
-      // Create each document group and its DocumentPage links in one pass
-      for (const group of docGroups) {
-        const doc = await prisma.document.create({
-          data: {
-            userId: blobData.userId,
-            blobId: id,
-            name: `${group.label} Package`,
-            documentType: group.label,
-            status: 'AI_CLASSIFIED',
-          },
-        });
-        logger.info(`Phase 2: Created document ${doc.id} for label ${group.label}`);
-        
-        const dpData = group.pageIds.map((pid, order) => ({
-          documentId: doc.id,
-          pageId: pid,
-          order,
-        }));
-        
-        const count = await prisma.documentPage.createMany({
-          data: dpData,
-          skipDuplicates: true,
-        });
-        logger.info(`Phase 2: Created ${count.count} document_pages for document ${doc.id}`);
-      }
-
-      await prisma.auditLog.create({
-        data: {
-          blobId: id,
-          action: 'ENGINE_PROCESSED',
-          payload: JSON.stringify({ pagesCreated: pages.length, status: status || 'COMPLETED' }),
-          performedBy: 'ai-engine',
-        },
-      });
+      await performDocumentGrouping(id, status);
     }
 
     res.json({ success: true, pagesCreated: pages.length });

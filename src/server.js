@@ -58,7 +58,8 @@ app.use(cors(corsOptions));
 // Explicitly handle preflight for all routes (needed on Vercel)
 app.options('*', cors(corsOptions));
 
-app.use(express.json());
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true }));
 app.use(cookieParser());
 
 // Serve static files from storage

@@ -13,7 +13,7 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
+  // No file size limit — allow files of any size (500MB+)
   fileFilter: (_req, file, cb) => {
     const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
     if (allowedTypes.includes(file.mimetype)) cb(null, true);
@@ -44,9 +44,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     // 2. Upload encrypted file to remote storage (SFTP/S3) so the remote engine can fetch it
     const storageSettings = await getStorageConfig();
     const fileSizeMB = Math.round(req.file.size / 1024 / 1024);
-    if (fileSizeMB > 50) {
-      logger.warn(`Upload: large file detected (${fileSizeMB}MB). SFTP transfer may take several minutes.`);
-    }
+    logger.info(`Upload: file size is ${fileSizeMB}MB.`);
     try {
       const fs = require('fs');
       const encryptedBuffer = fs.readFileSync(encryptedPath);
