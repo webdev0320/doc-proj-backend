@@ -10,6 +10,63 @@ const { uploadToRemote, getStorageConfig } = require('../utils/storage');
 
 const router = express.Router();
 
+async function performDocumentGrouping(blobId, status) {
+  if (status !== 'COMPLETED') return;
+
+  await prisma.$transaction(async (tx) => {
+    const blob = await tx.blob.findUnique({
+      where: { id: blobId },
+      select: { userId: true }
+    });
+    if (!blob) throw new Error(`Blob not found: ${blobId}`);
+
+    const pages = await tx.page.findMany({
+      where: { blobId },
+      orderBy: { pageIndex: 'asc' }
+    });
+    if (pages.length === 0) return;
+
+    await tx.document.deleteMany({ where: { blobId } });
+
+    const groups = [];
+    for (const page of pages) {
+      const label = page.aiLabel || 'UNCLASSIFIED';
+      const current = groups[groups.length - 1];
+      if (!current || (label !== current.documentType && label !== 'UNCLASSIFIED')) {
+        groups.push({ documentType: label, pages: [page] });
+      } else {
+        current.pages.push(page);
+      }
+    }
+
+    for (const group of groups) {
+      const firstPage = group.pages[0];
+      const lastPage = group.pages[group.pages.length - 1];
+      const pageRange = firstPage.pageIndex === lastPage.pageIndex
+        ? `p.${firstPage.pageIndex + 1}`
+        : `p.${firstPage.pageIndex + 1}-${lastPage.pageIndex + 1}`;
+
+      const document = await tx.document.create({
+        data: {
+          blobId,
+          userId: blob.userId,
+          name: `${group.documentType} (${pageRange})`,
+          documentType: group.documentType,
+          status: 'AI_CLASSIFIED',
+        }
+      });
+
+      await tx.documentPage.createMany({
+        data: group.pages.map((page, index) => ({
+          documentId: document.id,
+          pageId: page.id,
+          order: index
+        }))
+      });
+    }
+  }, { timeout: 30000 });
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (_req, file, cb) => {
@@ -351,7 +408,7 @@ router.post('/:id/pages', async (req, res) => {
 
     // ─── Phase 2: Document grouping (COMPLETED only) ─────────────────────────
     // Done OUTSIDE the first transaction so it doesn't extend the write lock.
-    if (status !== 'EXPLODED') {
+    if (status === 'COMPLETED') {
       await performDocumentGrouping(id, status);
     }
 
