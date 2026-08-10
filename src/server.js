@@ -103,6 +103,40 @@ app.use(errorHandler);
 // Initialize background services
 initSftpPoller();
 
+// Ensure the standard missing-document checklist questions exist in the DB.
+// Retries periodically so they are stored as soon as the DB is reachable
+// (e.g. after a Neon quota limit resets).
+const DEFAULT_CHECKLIST_QUESTIONS = [
+  'Is 1008 Underwriting Transmittal Summary part of the package?',
+  'Is Application 1003 part of the package?',
+  'Is Appraisal part of the package?',
+  'Is Closing Disclosure part of the package?',
+  'Is Deed part of the package?',
+  'Is Final Title Policy part of the package?',
+  'Is Flood Certificate part of the package?',
+  'Is Legal Description part of the package?',
+];
+
+async function seedDefaultChecklistQuestions() {
+  try {
+    const { prisma } = require('./lib/prisma');
+    let inserted = 0;
+    for (const text of DEFAULT_CHECKLIST_QUESTIONS) {
+      const existing = await prisma.checklistItem.findFirst({ where: { text } });
+      if (!existing) {
+        await prisma.checklistItem.create({ data: { text } });
+        inserted++;
+      }
+    }
+    if (inserted > 0) logger.info(`[ChecklistSeed] Inserted ${inserted} default checklist question(s).`);
+  } catch (e) {
+    logger.warn(`[ChecklistSeed] DB not ready (${e.message}). Will retry in 10 minutes.`);
+  }
+}
+
+seedDefaultChecklistQuestions();
+setInterval(seedDefaultChecklistQuestions, 10 * 60 * 1000);
+
 app.listen(PORT, () => {
   logger.info(`🚀 IDP Backend running on http://localhost:${PORT}`);
 });

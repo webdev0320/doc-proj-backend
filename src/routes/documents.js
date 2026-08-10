@@ -202,6 +202,64 @@ router.patch('/:id/checklists', async (req, res) => {
   res.json({ success: true, data: doc });
 });
 
+// PATCH /api/documents/:id/checklist-answers — save Yes/No answers for the missing document checklist
+router.patch('/:id/checklist-answers', async (req, res) => {
+  const { answers } = req.body;
+  const doc = await prisma.document.update({
+    where: { id: req.params.id },
+    data: { checklists: Array.isArray(answers) ? answers : [] }
+  });
+  res.json({ success: true, data: doc });
+});
+
+// GET /api/documents/:id/checklist-results — results (answer/comment/flag) for a document's checklist
+router.get('/:id/checklist-results', async (req, res) => {
+  const results = await prisma.documentChecklistResult.findMany({
+    where: { documentId: req.params.id },
+    include: { checklistItem: true },
+    orderBy: { checklistItem: { createdAt: 'asc' } }
+  });
+  res.json({ success: true, data: results });
+});
+
+// PATCH /api/documents/:id/checklist-results — upsert results for a document's checklist
+router.patch('/:id/checklist-results', async (req, res) => {
+  const { results } = req.body;
+  if (!Array.isArray(results)) {
+    return res.status(400).json({ success: false, error: 'results must be an array' });
+  }
+  await prisma.$transaction(
+    results.map((r) =>
+      prisma.documentChecklistResult.upsert({
+        where: {
+          documentId_checklistItemId: {
+            documentId: req.params.id,
+            checklistItemId: r.checklistItemId,
+          },
+        },
+        create: {
+          documentId: req.params.id,
+          checklistItemId: r.checklistItemId,
+          answer: r.answer || null,
+          comment: r.comment || null,
+          flagged: !!r.flagged,
+        },
+        update: {
+          answer: r.answer || null,
+          comment: r.comment || null,
+          flagged: !!r.flagged,
+        },
+      })
+    )
+  );
+  const updated = await prisma.documentChecklistResult.findMany({
+    where: { documentId: req.params.id },
+    include: { checklistItem: true },
+    orderBy: { checklistItem: { createdAt: 'asc' } }
+  });
+  res.json({ success: true, data: updated });
+});
+
 // PATCH /api/documents/:id/rename
 router.patch('/:id/rename', async (req, res) => {
   const { name, documentType, blobId } = req.body;

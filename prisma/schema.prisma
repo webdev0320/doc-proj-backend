@@ -84,6 +84,7 @@ model Document {
   auditLogs          AuditLog[]
   pages              DocumentPage[]
   blob               Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  checklistResults   DocumentChecklistResult[]
 
   @@map("documents")
 }
@@ -132,8 +133,26 @@ model ChecklistItem {
   id        String   @id @default(cuid())
   text      String
   createdAt DateTime @default(now())
+  results   DocumentChecklistResult[]
 
   @@map("checklist_items")
+}
+
+// Per-document results (answer/comment/flag) for each checklist question
+model DocumentChecklistResult {
+  id              String        @id @default(cuid())
+  documentId      String
+  checklistItemId String
+  answer          String?
+  comment         String?
+  flagged         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, checklistItemId])
+  @@map("document_checklist_results")
 }
 
 model StorageSettings {
