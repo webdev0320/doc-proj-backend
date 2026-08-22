@@ -305,5 +305,141 @@ router.put('/storage-settings', adminMiddleware, async (req, res) => {
   }
 });
 
+// --- DOCUMENT INDEXING (Per-Blob View) ---
+
+// GET /api/admin/blobs - List all blobs with document counts (searchable, paginated)
+router.get('/blobs', adminMiddleware, async (req, res) => {
+  try {
+    const { search, page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where = search
+      ? {
+          OR: [
+            { filename: { contains: search, mode: 'insensitive' } },
+            { batchNo: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+
+    const [blobs, total] = await Promise.all([
+      prisma.blob.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: parseInt(limit),
+        include: {
+          _count: { select: { documents: true, pages: true } },
+        },
+      }),
+      prisma.blob.count({ where }),
+    ]);
+
+    res.json({ success: true, data: blobs, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/admin/blobs/:id/documents - Get all documents for a blob with pages and extracted data
+router.get('/blobs/:id/documents', adminMiddleware, async (req, res) => {
+  try {
+    const documents = await prisma.document.findMany({
+      where: { blobId: req.params.id },
+      include: {
+        pages: {
+          include: { page: true },
+          orderBy: { order: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const blob = await prisma.blob.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, filename: true, batchNo: true, pageCount: true, status: true },
+    });
+
+    res.json({ success: true, data: { blob, documents } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/admin/documents/:id/rename - Update document name and/or documentType
+router.patch('/documents/:id/rename', adminMiddleware, async (req, res) => {
+  const { name, documentType } = req.body;
+  try {
+    const doc = await prisma.$transaction(async (tx) => {
+      const updated = await tx.document.update({
+        where: { id: req.params.id },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(documentType !== undefined && { documentType }),
+        },
+        include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          blobId: updated.blobId,
+          documentId: updated.id,
+          action: 'ADMIN_RENAME',
+          payload: JSON.stringify({ name, documentType, performedBy: req.user?.id }),
+        },
+      });
+
+      return updated;
+    });
+
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PATCH /api/admin/documents/:id/extracted-data - Update extractedData for a document's pages
+router.patch('/documents/:id/extracted-data', adminMiddleware, async (req, res) => {
+  const { extractedData, pageId } = req.body;
+  try {
+    const doc = await prisma.$transaction(async (tx) => {
+      const document = await tx.document.findUnique({
+        where: { id: req.params.id },
+        include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+      });
+
+      if (!document) throw new Error('Document not found');
+
+      const targetPageId = pageId || document.pages[0]?.pageId;
+      if (!targetPageId) throw new Error('No pages found for this document');
+
+      await tx.page.update({
+        where: { id: targetPageId },
+        data: { extractedData: JSON.stringify(extractedData) },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          blobId: document.blobId,
+          documentId: document.id,
+          action: 'ADMIN_UPDATE_EXTRACTED_DATA',
+          payload: JSON.stringify({ pageId: targetPageId, fields: Object.keys(extractedData), performedBy: req.user?.id }),
+        },
+      });
+
+      const updated = await tx.document.findUnique({
+        where: { id: req.params.id },
+        include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+      });
+
+      return updated;
+    });
+
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
 
