@@ -3,19 +3,19 @@ const { prisma } = require('../lib/prisma');
 
 const router = express.Router();
 
-// GET /api/documents/:id/extracted-values — fetch extracted values for a document
+// GET /api/documents/:id/extracted-values — fetch all extracted values for the blob
 router.get('/:id/extracted-values', async (req, res) => {
   try {
     const document = await prisma.document.findUnique({
       where: { id: req.params.id },
-      select: { id: true, documentType: true, name: true },
+      select: { id: true, blobId: true, documentType: true, name: true },
     });
     if (!document) {
       return res.status(404).json({ success: false, error: 'Document not found' });
     }
 
     const extractedValues = await prisma.extractedValue.findMany({
-      where: { documentId: req.params.id },
+      where: { blobId: document.blobId },
       orderBy: { createdAt: 'asc' },
     });
 

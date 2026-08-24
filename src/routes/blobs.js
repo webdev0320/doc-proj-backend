@@ -28,18 +28,19 @@ async function performDocumentGrouping(blobId, status) {
 
     await tx.document.deleteMany({ where: { blobId } });
 
-    const groups = [];
+    const groupMap = {};
     for (const page of pages) {
       const label = page.aiLabel || 'UNCLASSIFIED';
-      const current = groups[groups.length - 1];
-      if (!current || (label !== current.documentType && label !== 'UNCLASSIFIED')) {
-        groups.push({ documentType: label, pages: [page] });
-      } else {
-        current.pages.push(page);
-      }
+      if (!groupMap[label]) groupMap[label] = [];
+      groupMap[label].push(page);
     }
+    const groups = Object.entries(groupMap).map(([documentType, pages]) => ({
+      documentType,
+      pages,
+    }));
 
     for (const group of groups) {
+      group.pages.sort((a, b) => a.pageIndex - b.pageIndex);
       const firstPage = group.pages[0];
       const lastPage = group.pages[group.pages.length - 1];
       const pageRange = firstPage.pageIndex === lastPage.pageIndex
