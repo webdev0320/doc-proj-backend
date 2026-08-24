@@ -3,6 +3,43 @@ const { prisma } = require('../lib/prisma');
 
 const router = express.Router();
 
+// GET /api/documents/:id/extracted-values — fetch extracted values for a document
+router.get('/:id/extracted-values', async (req, res) => {
+  try {
+    const document = await prisma.document.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, blobId: true, documentType: true, name: true },
+    });
+    if (!document) {
+      return res.status(404).json({ success: false, error: 'Document not found' });
+    }
+
+    // Get all pageIds belonging to this document
+    const docPages = await prisma.documentPage.findMany({
+      where: { documentId: req.params.id },
+      select: { pageId: true },
+    });
+    const pageIds = docPages.map(dp => dp.pageId);
+
+    // Fetch extracted values for those pages
+    const extractedValues = await prisma.extractedValue.findMany({
+      where: { pageId: { in: pageIds } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        documentId: document.id,
+        documentName: document.documentType || document.name,
+        extractedValues,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/documents/split — split pages into a new document
 router.post('/split', async (req, res) => {
   const { blobId, pageIds, documentType, name } = req.body;
