@@ -348,7 +348,11 @@ router.get('/blobs/:id/documents', adminMiddleware, async (req, res) => {
       where: { blobId: req.params.id },
       include: {
         pages: {
-          include: { page: true },
+          include: {
+            page: {
+              include: { extractedValues: true },
+            },
+          },
           orderBy: { order: 'asc' },
         },
       },
@@ -377,8 +381,27 @@ router.patch('/documents/:id/rename', adminMiddleware, async (req, res) => {
           ...(name !== undefined && { name }),
           ...(documentType !== undefined && { documentType }),
         },
-        include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+        include: {
+          pages: {
+            include: { page: { include: { extractedValues: true } } },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
+
+      // Update extractedValues documentName if documentType changed
+      if (documentType) {
+        const docPages = await tx.documentPage.findMany({
+          where: { documentId: req.params.id },
+        });
+        const pageIds = docPages.map(dp => dp.pageId);
+        if (pageIds.length > 0) {
+          await tx.extractedValue.updateMany({
+            where: { pageId: { in: pageIds } },
+            data: { documentName: documentType },
+          });
+        }
+      }
 
       await tx.auditLog.create({
         data: {
@@ -398,7 +421,7 @@ router.patch('/documents/:id/rename', adminMiddleware, async (req, res) => {
   }
 });
 
-// PATCH /api/admin/documents/:id/extracted-data - Update extractedData for a document's pages
+// PATCH /api/admin/documents/:id/extracted-data - Update extracted values for a document's pages
 router.patch('/documents/:id/extracted-data', adminMiddleware, async (req, res) => {
   const { extractedData, pageId } = req.body;
   try {
@@ -413,23 +436,39 @@ router.patch('/documents/:id/extracted-data', adminMiddleware, async (req, res) 
       const targetPageId = pageId || document.pages[0]?.pageId;
       if (!targetPageId) throw new Error('No pages found for this document');
 
-      await tx.page.update({
-        where: { id: targetPageId },
-        data: { extractedData: JSON.stringify(extractedData) },
-      });
+      const pageRecord = await tx.page.findUnique({ where: { id: targetPageId } });
+      if (!pageRecord) throw new Error('Page not found');
+
+      // Delete existing extracted values for this page and re-insert
+      await tx.extractedValue.deleteMany({ where: { pageId: targetPageId } });
+
+      if (extractedData && Object.keys(extractedData).length > 0) {
+        await tx.extractedValue.createMany({
+          data: Object.entries(extractedData).map(([fieldName, extractedValue]) => ({
+            blobId: document.blobId,
+            pageId: targetPageId,
+            documentName: document.documentType || 'UNCLASSIFIED',
+            fieldName,
+            extractedValue: extractedValue != null ? String(extractedValue) : '',
+          })),
+        });
+      }
 
       await tx.auditLog.create({
         data: {
           blobId: document.blobId,
           documentId: document.id,
           action: 'ADMIN_UPDATE_EXTRACTED_DATA',
-          payload: JSON.stringify({ pageId: targetPageId, fields: Object.keys(extractedData), performedBy: req.user?.id }),
+          payload: JSON.stringify({ pageId: targetPageId, fields: Object.keys(extractedData || {}), performedBy: req.user?.id }),
         },
       });
 
       const updated = await tx.document.findUnique({
         where: { id: req.params.id },
-        include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+        include: {
+          pages: { include: { page: true }, orderBy: { order: 'asc' } },
+          extractedValues: true,
+        },
       });
 
       return updated;

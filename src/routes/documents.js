@@ -36,7 +36,13 @@ router.post('/split', async (req, res) => {
       })),
     });
 
-    // 4. Cleanup: Delete documents that no longer have any pages
+    // 4. Update extractedValues documentName for affected pages
+    await tx.extractedValue.updateMany({
+      where: { pageId: { in: pageIds } },
+      data: { documentName: documentType || 'Unknown' },
+    });
+
+    // 5. Cleanup: Delete documents that no longer have any pages
     const emptyDocs = await tx.document.findMany({
       where: {
         blobId,
@@ -62,7 +68,12 @@ router.post('/split', async (req, res) => {
     // Fetch all documents for this blob to keep frontend in sync
     const allDocs = await tx.document.findMany({
       where: { blobId },
-      include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+      include: {
+        pages: {
+          include: { page: { include: { extractedValues: true } } },
+          orderBy: { order: 'asc' },
+        },
+      },
       orderBy: { createdAt: 'asc' }
     });
 
@@ -94,11 +105,23 @@ router.post('/merge', async (req, res) => {
     });
     const maxOrder = targetPages.length ? targetPages[targetPages.length - 1].order : -1;
 
+    // Get target document to know the new documentName
+    const targetDoc = await tx.document.findUnique({ where: { id: targetDocumentId } });
+
     // Re-parent source pages to target
     for (let i = 0; i < sourcePages.length; i++) {
       await tx.documentPage.update({
         where: { id: sourcePages[i].id },
         data: { documentId: targetDocumentId, order: maxOrder + 1 + i },
+      });
+    }
+
+    // Update extractedValues documentName for source pages
+    const sourcePageIds = sourcePages.map(sp => sp.pageId);
+    if (sourcePageIds.length > 0 && targetDoc) {
+      await tx.extractedValue.updateMany({
+        where: { pageId: { in: sourcePageIds } },
+        data: { documentName: targetDoc.documentType || targetDoc.name },
       });
     }
 
@@ -117,7 +140,12 @@ router.post('/merge', async (req, res) => {
 
   const merged = await prisma.document.findUnique({
     where: { id: targetDocumentId },
-    include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } },
+    include: {
+      pages: {
+        include: { page: { include: { extractedValues: true } } },
+        orderBy: { order: 'asc' },
+      },
+    },
   });
 
   res.json({ success: true, data: merged });
@@ -134,17 +162,32 @@ router.patch('/:id/verify', async (req, res) => {
         ...(documentType && { documentType }),
         ...(name && { name }),
       },
-      include: { pages: { include: { page: true }, orderBy: { order: 'asc' } } }
+      include: {
+        pages: {
+          include: { page: { include: { extractedValues: true } } },
+          orderBy: { order: 'asc' },
+        },
+      },
     });
 
+    // Update extracted values if provided
     if (extractedData && Object.keys(extractedData).length > 0) {
       const firstPage = updated.pages[0];
       if (firstPage) {
-        await tx.page.update({
-          where: { id: firstPage.pageId },
-          data: { extractedData: JSON.stringify(extractedData) }
+        const pageId = firstPage.pageId;
+        const pageRecord = await tx.page.findUnique({ where: { id: pageId } });
+
+        // Delete existing and re-insert
+        await tx.extractedValue.deleteMany({ where: { pageId } });
+        await tx.extractedValue.createMany({
+          data: Object.entries(extractedData).map(([fieldName, extractedValue]) => ({
+            blobId: updated.blobId,
+            pageId,
+            documentName: documentType || updated.documentType || 'UNCLASSIFIED',
+            fieldName,
+            extractedValue: extractedValue != null ? String(extractedValue) : '',
+          })),
         });
-        firstPage.page.extractedData = JSON.stringify(extractedData);
       }
     }
 
@@ -271,6 +314,20 @@ router.patch('/:id/rename', async (req, res) => {
         ...(documentType && { documentType }),
       },
     });
+
+    // Update extractedValues documentName if documentType changed
+    if (documentType) {
+      const docPages = await tx.documentPage.findMany({
+        where: { documentId: req.params.id },
+      });
+      const pageIds = docPages.map(dp => dp.pageId);
+      if (pageIds.length > 0) {
+        await tx.extractedValue.updateMany({
+          where: { pageId: { in: pageIds } },
+          data: { documentName: documentType },
+        });
+      }
+    }
 
     await tx.auditLog.create({
       data: {

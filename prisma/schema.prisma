@@ -41,10 +41,10 @@ model Blob {
   completedAt  DateTime?
   user         User       @relation("UploadedBlobs", fields: [userId], references: [id])
   assignedTo   User?      @relation("AssignedBlobs", fields: [assignedToId], references: [id])
-  auditLogs    AuditLog[]
-  documents    Document[]
-  pages        Page[]
-
+  auditLogs        AuditLog[]
+  documents        Document[]
+  pages            Page[]
+  extractedValues  ExtractedValue[]
 
   @@map("blobs")
 }
@@ -60,11 +60,11 @@ model Page {
   isFlagged       Boolean        @default(false)
   rotation        Int            @default(0)
   anomalyFlags    String?        
-  extractedData   String?        
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   documentPages   DocumentPage[]
   blob            Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  extractedValues ExtractedValue[]
 
   @@unique([blobId, pageIndex])
   @@map("pages")
@@ -183,5 +183,23 @@ model ClassificationCorrection {
   createdAt         DateTime @default(now())
 
   @@map("classification_corrections")
+}
+
+model ExtractedValue {
+  id              String   @id @default(cuid())
+  blobId          String
+  pageId          String
+  documentName    String
+  fieldName       String
+  extractedValue  String
+  qaValue         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  blob Blob @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, fieldName])
+  @@map("extracted_values")
 }
 

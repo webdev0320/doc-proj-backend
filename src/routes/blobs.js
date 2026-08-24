@@ -135,10 +135,18 @@ router.get('/:id', async (req, res) => {
       where: { id: req.params.id },
       include: {
         assignedTo: { select: { id: true, name: true } },
-        pages: { orderBy: { pageIndex: 'asc' } },
+        pages: {
+          orderBy: { pageIndex: 'asc' },
+          include: { extractedValues: true },
+        },
         documents: {
           include: {
-            pages: { include: { page: true }, orderBy: { order: 'asc' } },
+            pages: {
+              include: {
+                page: { include: { extractedValues: true } },
+              },
+              orderBy: { order: 'asc' },
+            },
           },
         },
       },
@@ -162,10 +170,18 @@ router.get('/:id', async (req, res) => {
         s3Path: true, pageCount: true, status: true, batchNo: true,
         progress: true, createdAt: true, updatedAt: true,
         assignedTo: { select: { id: true, name: true } },
-        pages: { orderBy: { pageIndex: 'asc' } },
+        pages: {
+          orderBy: { pageIndex: 'asc' },
+          include: { extractedValues: true },
+        },
         documents: {
           include: {
-            pages: { include: { page: true }, orderBy: { order: 'asc' } },
+            pages: {
+              include: {
+                page: { include: { extractedValues: true } },
+              },
+              orderBy: { order: 'asc' },
+            },
           },
         },
       }
@@ -314,14 +330,9 @@ router.post('/:id/pages', async (req, res) => {
   // ── APPEND MODE: just insert new pages, keep existing ones ─────────────
   if (mode === 'append') {
     try {
-      await prisma.page.createMany({
-        data: pages.map(p => {
-          const extData = p.extracted_data || p.data || p.fields || p.ocr;
-          const finalData = extData && Object.keys(extData).length > 0 
-            ? extData 
-            : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
-
-          return {
+      await prisma.$transaction(async (tx) => {
+        await tx.page.createMany({
+          data: pages.map(p => ({
             blobId: id,
             pageIndex: p.page_index,
             s3Path: p.s3_path,
@@ -329,11 +340,39 @@ router.post('/:id/pages', async (req, res) => {
             confidenceScore: p.confidence_score,
             isFlagged: p.is_flagged || false,
             anomalyFlags: p.anomaly_flags,
-            extractedData: finalData ? (typeof finalData === 'object' ? JSON.stringify(finalData) : String(finalData)) : null,
-          };
-        }),
-        skipDuplicates: true,
+          })),
+          skipDuplicates: true,
+        });
+
+        // Insert extracted values as individual rows
+        for (const p of pages) {
+          const extData = p.extracted_data || p.data || p.fields || p.ocr;
+          const finalData = extData && Object.keys(extData).length > 0
+            ? extData
+            : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
+
+          if (finalData && typeof finalData === 'object') {
+            const pageRecord = await tx.page.findFirst({
+              where: { blobId: id, pageIndex: p.page_index },
+              select: { id: true },
+            });
+            if (pageRecord) {
+              const docName = p.ai_label || 'UNCLASSIFIED';
+              await tx.extractedValue.createMany({
+                data: Object.entries(finalData).map(([fieldName, extractedValue]) => ({
+                  blobId: id,
+                  pageId: pageRecord.id,
+                  documentName: docName,
+                  fieldName,
+                  extractedValue: extractedValue != null ? String(extractedValue) : '',
+                })),
+                skipDuplicates: true,
+              });
+            }
+          }
+        }
       });
+
       const totalPages = await prisma.page.count({ where: { blobId: id } });
       await prisma.blob.update({
         where: { id },
@@ -368,7 +407,6 @@ router.post('/:id/pages', async (req, res) => {
               confidenceScore: p.confidence_score,
               isFlagged: p.is_flagged || false,
               anomalyFlags: p.anomaly_flags,
-              extractedData: p.extracted_data ? (typeof p.extracted_data === 'object' ? JSON.stringify(p.extracted_data) : String(p.extracted_data)) : null,
             })),
             skipDuplicates: true,
           });
@@ -381,24 +419,45 @@ router.post('/:id/pages', async (req, res) => {
         // COMPLETED path: delete old stubs and bulk-insert final records
         await tx.page.deleteMany({ where: { blobId: id } });
         await tx.page.createMany({
-          data: pages.map(p => {
-            const extData = p.extracted_data || p.data || p.fields || p.ocr;
-            const finalData = extData && Object.keys(extData).length > 0 
-              ? extData 
-              : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
-
-            return {
-              blobId: id,
-              pageIndex: p.page_index,
-              s3Path: p.s3_path,
-              aiLabel: p.ai_label,
-              confidenceScore: p.confidence_score,
-              isFlagged: p.is_flagged || false,
-              anomalyFlags: p.anomaly_flags,
-              extractedData: finalData ? (typeof finalData === 'object' ? JSON.stringify(finalData) : String(finalData)) : null,
-            };
-          }),
+          data: pages.map(p => ({
+            blobId: id,
+            pageIndex: p.page_index,
+            s3Path: p.s3_path,
+            aiLabel: p.ai_label,
+            confidenceScore: p.confidence_score,
+            isFlagged: p.is_flagged || false,
+            anomalyFlags: p.anomaly_flags,
+          })),
         });
+
+        // Insert extracted values as individual rows
+        for (const p of pages) {
+          const extData = p.extracted_data || p.data || p.fields || p.ocr;
+          const finalData = extData && Object.keys(extData).length > 0
+            ? extData
+            : (p.ocr_text || p.content ? { "Raw OCR Content": p.ocr_text || p.content } : null);
+
+          if (finalData && typeof finalData === 'object') {
+            const pageRecord = await tx.page.findFirst({
+              where: { blobId: id, pageIndex: p.page_index },
+              select: { id: true },
+            });
+            if (pageRecord) {
+              const docName = p.ai_label || 'UNCLASSIFIED';
+              await tx.extractedValue.createMany({
+                data: Object.entries(finalData).map(([fieldName, extractedValue]) => ({
+                  blobId: id,
+                  pageId: pageRecord.id,
+                  documentName: docName,
+                  fieldName,
+                  extractedValue: extractedValue != null ? String(extractedValue) : '',
+                })),
+                skipDuplicates: true,
+              });
+            }
+          }
+        }
+
         await tx.blob.update({
           where: { id },
           data: { status: status || 'PROCESSING', pageCount: pages.length },
