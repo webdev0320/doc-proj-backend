@@ -83,6 +83,7 @@ model Document {
   user               User           @relation(fields: [userId], references: [id])
   auditLogs          AuditLog[]
   pages              DocumentPage[]
+  extractedValues    ExtractedValue[]
   blob               Blob           @relation(fields: [blobId], references: [id], onDelete: Cascade)
   checklistResults   DocumentChecklistResult[]
 
@@ -189,6 +190,7 @@ model ExtractedValue {
   id              String   @id @default(cuid())
   blobId          String
   pageId          String
+  documentId      String?
   documentName    String
   fieldName       String
   extractedValue  String
@@ -196,8 +198,9 @@ model ExtractedValue {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  blob Blob @relation(fields: [blobId], references: [id], onDelete: Cascade)
-  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  blob     Blob      @relation(fields: [blobId], references: [id], onDelete: Cascade)
+  page     Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
   @@unique([pageId, fieldName])
   @@map("extracted_values")

@@ -8,22 +8,14 @@ router.get('/:id/extracted-values', async (req, res) => {
   try {
     const document = await prisma.document.findUnique({
       where: { id: req.params.id },
-      select: { id: true, blobId: true, documentType: true, name: true },
+      select: { id: true, documentType: true, name: true },
     });
     if (!document) {
       return res.status(404).json({ success: false, error: 'Document not found' });
     }
 
-    // Get all pageIds belonging to this document
-    const docPages = await prisma.documentPage.findMany({
-      where: { documentId: req.params.id },
-      select: { pageId: true },
-    });
-    const pageIds = docPages.map(dp => dp.pageId);
-
-    // Fetch extracted values for those pages
     const extractedValues = await prisma.extractedValue.findMany({
-      where: { pageId: { in: pageIds } },
+      where: { documentId: req.params.id },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -73,11 +65,11 @@ router.post('/split', async (req, res) => {
       })),
     });
 
-    // 4. Update extractedValues documentName for affected pages
-    await tx.extractedValue.updateMany({
-      where: { pageId: { in: pageIds } },
-      data: { documentName: documentType || 'Unknown' },
-    });
+      // 4. Update extractedValues documentName and documentId for affected pages
+      await tx.extractedValue.updateMany({
+        where: { pageId: { in: pageIds } },
+        data: { documentName: documentType || 'Unknown', documentId: doc.id },
+      });
 
     // 5. Cleanup: Delete documents that no longer have any pages
     const emptyDocs = await tx.document.findMany({
@@ -153,12 +145,12 @@ router.post('/merge', async (req, res) => {
       });
     }
 
-    // Update extractedValues documentName for source pages
+    // Update extractedValues documentName and documentId for source pages
     const sourcePageIds = sourcePages.map(sp => sp.pageId);
     if (sourcePageIds.length > 0 && targetDoc) {
       await tx.extractedValue.updateMany({
         where: { pageId: { in: sourcePageIds } },
-        data: { documentName: targetDoc.documentType || targetDoc.name },
+        data: { documentName: targetDoc.documentType || targetDoc.name, documentId: targetDocumentId },
       });
     }
 
@@ -212,7 +204,6 @@ router.patch('/:id/verify', async (req, res) => {
       const firstPage = updated.pages[0];
       if (firstPage) {
         const pageId = firstPage.pageId;
-        const pageRecord = await tx.page.findUnique({ where: { id: pageId } });
 
         // Delete existing and re-insert
         await tx.extractedValue.deleteMany({ where: { pageId } });
@@ -220,6 +211,7 @@ router.patch('/:id/verify', async (req, res) => {
           data: Object.entries(extractedData).map(([fieldName, extractedValue]) => ({
             blobId: updated.blobId,
             pageId,
+            documentId: updated.id,
             documentName: documentType || updated.documentType || 'UNCLASSIFIED',
             fieldName,
             extractedValue: extractedValue != null ? String(extractedValue) : '',
@@ -352,7 +344,7 @@ router.patch('/:id/rename', async (req, res) => {
       },
     });
 
-    // Update extractedValues documentName if documentType changed
+    // Update extractedValues documentName and documentId if documentType changed
     if (documentType) {
       const docPages = await tx.documentPage.findMany({
         where: { documentId: req.params.id },
@@ -361,7 +353,7 @@ router.patch('/:id/rename', async (req, res) => {
       if (pageIds.length > 0) {
         await tx.extractedValue.updateMany({
           where: { pageId: { in: pageIds } },
-          data: { documentName: documentType },
+          data: { documentName: documentType, documentId: req.params.id },
         });
       }
     }

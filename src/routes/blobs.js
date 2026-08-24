@@ -56,12 +56,20 @@ async function performDocumentGrouping(blobId, status) {
         }
       });
 
+      const pageIds = group.pages.map(p => p.id);
+
       await tx.documentPage.createMany({
         data: group.pages.map((page, index) => ({
           documentId: document.id,
           pageId: page.id,
           order: index
         }))
+      });
+
+      // Backfill documentId on extracted_values for these pages
+      await tx.extractedValue.updateMany({
+        where: { pageId: { in: pageIds } },
+        data: { documentId: document.id, documentName: group.documentType },
       });
     }
   }, { timeout: 30000 });

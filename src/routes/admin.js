@@ -398,7 +398,7 @@ router.patch('/documents/:id/rename', adminMiddleware, async (req, res) => {
         if (pageIds.length > 0) {
           await tx.extractedValue.updateMany({
             where: { pageId: { in: pageIds } },
-            data: { documentName: documentType },
+            data: { documentName: documentType, documentId: req.params.id },
           });
         }
       }
@@ -447,6 +447,7 @@ router.patch('/documents/:id/extracted-data', adminMiddleware, async (req, res) 
           data: Object.entries(extractedData).map(([fieldName, extractedValue]) => ({
             blobId: document.blobId,
             pageId: targetPageId,
+            documentId: document.id,
             documentName: document.documentType || 'UNCLASSIFIED',
             fieldName,
             extractedValue: extractedValue != null ? String(extractedValue) : '',
