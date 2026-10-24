@@ -341,6 +341,52 @@ router.get('/blobs', adminMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/admin/documents - All documents uploaded by users (flat list, searchable, paginated)
+router.get('/documents', adminMiddleware, async (req, res) => {
+  try {
+    const { search, userId, documentType, page = 1, limit = 50 } = req.query;
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const take = Math.min(Math.max(parseInt(limit) || 50, 1), 200);
+    const skip = (pageNum - 1) * take;
+
+    const and = [];
+    if (userId) and.push({ userId });
+    if (documentType) and.push({ documentType });
+    if (search) {
+      and.push({
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { documentType: { contains: search, mode: 'insensitive' } },
+          { blob: { filename: { contains: search, mode: 'insensitive' } } },
+          { blob: { batchNo: { contains: search, mode: 'insensitive' } } },
+          { user: { email: { contains: search, mode: 'insensitive' } } },
+          { user: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      });
+    }
+    const where = and.length ? { AND: and } : {};
+
+    const [documents, total] = await Promise.all([
+      prisma.document.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          blob: { select: { id: true, filename: true, batchNo: true, status: true } },
+          _count: { select: { pages: true, extractedValues: true } },
+        },
+      }),
+      prisma.document.count({ where }),
+    ]);
+
+    res.json({ success: true, data: documents, total, page: pageNum, limit: take });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/admin/blobs/:id/documents - Get all documents for a blob with pages and extracted data
 router.get('/blobs/:id/documents', adminMiddleware, async (req, res) => {
   try {

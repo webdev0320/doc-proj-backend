@@ -307,16 +307,18 @@ const rows = [
 ];
 
 async function main() {
-  const deleted = await prisma.extractedValue.deleteMany({
-    where: { blobId: BLOB_ID },
-  });
-  console.log('Deleted ' + deleted.count + ' existing rows for blob ' + BLOB_ID);
-
-  const created = await prisma.extractedValue.createMany({
-    data: rows.map(r => ({ ...r, blobId: BLOB_ID })),
-    skipDuplicates: true,
-  });
-  console.log('Inserted ' + created.count + ' extracted values');
+  // Upsert per (pageId, fieldName) so re-running only writes the seeded fields
+  // and leaves documentId / qaValue / manual edits untouched.
+  let upserted = 0;
+  for (const r of rows) {
+    await prisma.extractedValue.upsert({
+      where: { pageId_fieldName: { pageId: r.pageId, fieldName: r.fieldName } },
+      create: { ...r, blobId: BLOB_ID },
+      update: { documentName: r.documentName, extractedValue: r.extractedValue },
+    });
+    upserted++;
+  }
+  console.log('Upserted ' + upserted + ' extracted values');
 
   const byDoc = await prisma.extractedValue.groupBy({
     by: ['documentName'],
